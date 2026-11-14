@@ -1,4 +1,4 @@
-# Sunday Stroll Through The Week - Camp Carro
+# Sunday Stroll Through The Week - Camp Carroll
 
 Proclaim-style web presenter for PPTX slideshows with realtime QR follow-along and daily devotionals generated from scriptures in the slides.
 

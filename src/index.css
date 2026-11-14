@@ -241,3 +241,21 @@ details summary { cursor: pointer; }
   .slide-viewer .title-qr { display: none; }
   .slide-viewer .slide-content { font-size: 0.95rem; padding: 1rem; }
 }
+
+/* ---- review fixes: sermon title heading, QR caption, phone archive ---- */
+.slide-subtitle { font-size: 0.85em; color: var(--text-secondary); margin-bottom: 0.75rem; letter-spacing: 0.02em; }
+.bulletin-sub { font-size: 0.95rem; color: var(--accent-cyan); margin-bottom: 0.25rem; }
+.title-qr { line-height: 1.2; }
+.title-qr div { white-space: nowrap; padding: 0 0.2rem 0.1rem; }
+.slide-content.has-qr { padding-bottom: 1rem; }
+.host-note { margin: 1rem auto 0; max-width: 680px; text-align: left; font-size: 0.85rem; line-height: 1.5; background: rgba(255,209,102,0.08); border: 1px solid rgba(255,209,102,0.35); border-radius: 8px; padding: 0.75rem 1rem; }
+.host-note code { font-size: 0.8rem; }
+@media (max-width: 700px) {
+  .archive { padding: 1rem; }
+  .archive table, .archive tbody, .archive tr, .archive td { display: block; width: 100%; }
+  .archive thead { display: none; }
+  .archive tr { border: 1px solid var(--border); border-radius: 10px; padding: 0.75rem; margin-bottom: 0.75rem; }
+  .archive td { border: none; padding: 0.2rem 0; }
+  .archive td[data-label]::before { content: attr(data-label) ": "; color: var(--text-secondary); font-size: 0.8rem; }
+  .row-actions { margin-top: 0.5rem; }
+}
