@@ -1,8 +1,8 @@
 {
-  "name": "sundays-walk-presenter",
+  "name": "sunday-stroll-presenter",
   "version": "1.0.0",
   "private": true,
-  "description": "Sunday’s Walk Through The Week - Camp Carro | Proclaim-style PPTX presenter with realtime follow-along and daily devotionals",
+  "description": "Sunday Stroll Through The Week - Camp Carro | Proclaim-style PPTX presenter with realtime follow-along and daily devotionals",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -1,14 +1,14 @@
 {
  "id": "60YROW7M",
- "title": "SurmonDevote",
- "fileName": "SurmonDevote_v2.pptx",
+ "title": "Sermon_Dev",
+ "fileName": "Sermon_Dev.pptx",
  "theme": "Peace on the Family Front - Ephesians 5:22-6:4",
  "weekOf": "2026-11-15",
  "version": "ESV",
  "slides": [
   {
    "id": "s0",
-   "title": "SurmonDevote",
+   "title": "Sermon_Dev",
    "body": "Peace on the Family Front\nCamp Carroll Chapel · Ephesians 5",
    "notes": "",
    "images": []
@@ -297,7 +297,7 @@
   }
  ],
  "status": "published",
- "createdAt": "2026-11-14T13:13:29.653Z",
- "publishedAt": "2026-11-14T13:13:32.173Z",
- "updatedAt": "2026-11-14T13:13:32.173Z"
+ "createdAt": "2026-11-14T23:00:47.502Z",
+ "publishedAt": "2026-11-14T23:00:49.820Z",
+ "updatedAt": "2026-11-14T23:00:49.820Z"
 }

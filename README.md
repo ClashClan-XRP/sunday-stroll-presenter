@@ -1,6 +1,13 @@
-# Sunday’s Walk Through The Week - Camp Carro
+# Sunday Stroll Through The Week - Camp Carro
 
 Proclaim-style web presenter for PPTX slideshows with realtime QR follow-along and daily devotionals generated from scriptures in the slides.
+
+## Live demo (GitHub Pages)
+
+- Presenter / archive: https://clashclan-xrp.github.io/sunday-stroll-presenter/
+- Published test bulletin (Sermon_Dev, Peace on the Family Front, Eph 5:22-6:4): https://clashclan-xrp.github.io/sunday-stroll-presenter/?session=60YROW7M&mode=bulletin
+
+Deploy: `npm run build`, then publish `dist/` to the `gh-pages` branch (Pages source = gh-pages /). Published sessions placed in `public/sessions/` (plus `index.json`) load on any device.
 
 ## Features
 
@@ -8,7 +15,7 @@ Proclaim-style web presenter for PPTX slideshows with realtime QR follow-along a
 - Fullscreen presentation mode
 - Mobile-friendly controls
 - QR code on title/presenter view for public realtime follow-along
-- Separate Devotionals page ("Sunday’s Walk Through The Week") that extracts Bible references from slides and generates daily reflections
+- Separate Devotionals page ("Sunday Stroll Through The Week") that extracts Bible references from slides and generates daily reflections
 - Dark theme with purple gradients and green/cyan accents inspired by Faithlife Proclaim
 
 ## Setup
@@ -22,7 +29,7 @@ Open http://localhost:5173
 
 Upload a .pptx file. A QR code will appear for audience follow-along (open the link in another tab/device).
 
-## Flow (doge/surmondevote-fixes)
+## Flow
 
 1. Host archive at `/` - upload a PPTX, see every previous presentation (draft/published) with Review/Edit, Present, Bulletin, Delete.
 2. Review/Edit (`?session=ID&mode=edit`) - edit title, week theme, sermon Sunday, slides (reorder/add/delete), and 7 daily devotionals. Scripture uses structured fields: book, chapter, verse start/end, Bible version.

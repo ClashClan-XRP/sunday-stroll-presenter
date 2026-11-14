@@ -1,9 +1,10 @@
 // Local persistence for the presentation archive (browser localStorage).
 // NOTE: localStorage is per-browser. A shared backend is needed for cross-device archives.
-const KEY = 'swp_archive_v1'
+const KEY = 'ssp_archive_v1'
+const OLD_KEY = 'swp_archive_v1' // storage key used before the project rename
 
 export function loadArchive() {
-  try { return JSON.parse(localStorage.getItem(KEY) || '[]') } catch { return [] }
+  try { return JSON.parse(localStorage.getItem(KEY) || localStorage.getItem(OLD_KEY) || '[]') } catch { return [] }
 }
 
 function write(list) {

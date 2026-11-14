@@ -176,7 +176,7 @@ body {
   border-left: 3px solid var(--accent-green);
 }
 
-/* ---- SurmonDevote additions ---- */
+/* ---- Sermon_Dev additions ---- */
 .muted { color: var(--text-secondary); }
 .small { font-size: 0.85rem; }
 .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.85rem; }
@@ -236,3 +236,8 @@ select option { color: #111; }
 .scripture a { color: var(--accent-cyan); }
 details summary { cursor: pointer; }
 @media (max-width: 600px) { .header { flex-direction: column; gap: 0.75rem; padding: 1rem; } .main { padding: 1rem; } .logo { font-size: 1.05rem; } }
+
+@media (max-width: 700px) {
+  .slide-viewer .title-qr { display: none; }
+  .slide-viewer .slide-content { font-size: 0.95rem; padding: 1rem; }
+}

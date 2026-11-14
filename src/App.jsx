@@ -27,7 +27,7 @@ function Header({ children, nav }) {
     <header className="header no-print">
       <div className="logo" style={{ cursor: 'pointer' }} onClick={() => nav({ mode: 'home' })}>
         <div className="logo-icon">P</div>
-        Sunday’s Walk Through The Week - Camp Carro
+        Sunday Stroll Through The Week - Camp Carro
       </div>
       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>{children}</div>
     </header>
@@ -343,7 +343,7 @@ function Bulletin({ id, nav }) {
       </Header>
       <main className="main devotional-page bulletin">
         <div className="bulletin-head">
-          <div className="muted small">Sunday’s Walk Through The Week • Camp Carroll</div>
+          <div className="muted small">Sunday Stroll Through The Week • Camp Carroll</div>
           <h1>{pres.title}</h1>
           <p className="muted">{pres.theme}{pres.weekOf ? ` • Week of ${new Date(`${pres.weekOf}T12:00:00`).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}</p>
         </div>
