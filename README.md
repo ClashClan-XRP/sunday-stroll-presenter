@@ -22,7 +22,17 @@ Open http://localhost:5173
 
 Upload a .pptx file. A QR code will appear for audience follow-along (open the link in another tab/device).
 
-## Realtime Notes
+## Flow (doge/surmondevote-fixes)
+
+1. Host archive at `/` - upload a PPTX, see every previous presentation (draft/published) with Review/Edit, Present, Bulletin, Delete.
+2. Review/Edit (`?session=ID&mode=edit`) - edit title, week theme, sermon Sunday, slides (reorder/add/delete), and 7 daily devotionals. Scripture uses structured fields: book, chapter, verse start/end, Bible version.
+3. Publish - locks edits, shows a QR code that opens the bulletin; the same QR appears on the title slide in the presenter and fullscreen views.
+4. Bulletin (`?session=ID&mode=bulletin`) - all-week devotionals with Print day / Download day, Print week / Download week (.html, .txt). "Copy share link" makes a portable link that works on any device without a backend.
+5. Presenter downloads: PPTX (pptxgenjs) and PDF (browser print-to-PDF).
+
+Storage is browser localStorage for this MVP; a shared backend is required for the archive and short bulletin link to work across devices.
+
+## Realtime Notes (deferred)
 
 This MVP uses client-side parsing with `pptxtojson`. For true multi-device realtime sync (presenter advances → audience updates), deploy with a WebSocket server (Socket.io) or use a service like Supabase Realtime. Session IDs are already generated for this purpose.
 

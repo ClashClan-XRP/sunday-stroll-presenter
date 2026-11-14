@@ -175,3 +175,64 @@ body {
   padding-left: 1rem;
   border-left: 3px solid var(--accent-green);
 }
+
+/* ---- SurmonDevote additions ---- */
+.muted { color: var(--text-secondary); }
+.small { font-size: 0.85rem; }
+.btn-sm { padding: 0.4rem 0.8rem; font-size: 0.85rem; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-icon { background: transparent; color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 0.15rem 0.5rem; margin-left: 0.25rem; cursor: pointer; }
+.archive { margin-top: 2rem; background: var(--card-bg); border-radius: 12px; padding: 1.5rem; }
+.archive h2 { margin-bottom: 1rem; }
+.archive table { width: 100%; border-collapse: collapse; }
+.archive th, .archive td { text-align: left; padding: 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.row-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; margin-left: 0.5rem; }
+.badge.draft { background: rgba(255,200,0,0.15); color: #ffd166; }
+.badge.published { background: rgba(0,229,160,0.18); color: var(--accent-green); }
+.meta-row { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1rem; }
+.meta-row label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; color: var(--text-secondary); flex: 1; min-width: 240px; }
+input, textarea { background: rgba(0,0,0,0.3); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem; font: inherit; width: 100%; margin-top: 0.35rem; }
+input:disabled, textarea:disabled { opacity: 0.7; }
+.editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1rem; }
+.editor-grid h2 { margin-bottom: 0.75rem; }
+@media (max-width: 900px) { .editor-grid { grid-template-columns: 1fr; } }
+.edit-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 0.9rem; margin: 0.75rem 0; }
+.edit-head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.ref-input { max-width: 180px; margin-top: 0; }
+.slide-title { font-size: 1.6em; font-weight: 700; color: var(--accent-green); margin-bottom: 0.75rem; }
+.slide-body { white-space: pre-line; }
+.slide-content { position: relative; }
+.title-qr { position: absolute; right: 1.25rem; bottom: 1.25rem; background: #fff; color: #0f0c29; border-radius: 10px; padding: 0.4rem; font-size: 0.75rem; text-align: center; }
+.exit-full { position: fixed; top: 1rem; right: 1rem; }
+.notes { margin-top: 1rem; padding: 1rem; background: var(--card-bg); border-radius: 8px; }
+.devotional-card.today { border-color: var(--accent-green); box-shadow: 0 0 0 1px var(--accent-green); }
+.print-root { background: #fff; color: #111; min-height: 100vh; }
+.print-slide { width: 100%; aspect-ratio: 16/9; border: 1px solid #ccc; margin: 0 0 1rem; padding: 2.5rem; position: relative; page-break-after: always; break-after: page; display: flex; flex-direction: column; justify-content: center; }
+.ps-title { font-size: 2rem; font-weight: 700; color: #302b63; margin-bottom: 1rem; }
+.ps-body { font-size: 1.3rem; white-space: pre-line; }
+.ps-qr { position: absolute; right: 1.5rem; bottom: 1.5rem; }
+.ps-foot { position: absolute; left: 2.5rem; bottom: 1rem; font-size: 0.8rem; color: #777; }
+.print-devos { max-width: 720px; margin: 0 auto; padding: 2rem; font-family: Georgia, serif; line-height: 1.5; }
+.print-devos section { border-top: 2px solid #00a37a; padding: 0.5rem 0 1rem; break-inside: avoid; }
+.print-devos .ref { font-style: italic; color: #00796b; }
+@media print {
+  body { background: #fff !important; }
+  .no-print { display: none !important; }
+  @page { size: letter portrait; margin: 0.5in; }
+  @page slides { size: letter landscape; margin: 0.4in; }
+  .print-slide { page: slides; border: none; }
+}
+
+
+select { background: rgba(0,0,0,0.3); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 0.45rem; font: inherit; margin-top: 0.35rem; }
+select option { color: #111; }
+.meta-row label.narrow { flex: 0 0 auto; min-width: 180px; }
+.ref-fields { display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; margin-top: 0.4rem; }
+.ref-fields select:first-child { flex: 1 1 140px; }
+.ref-fields input[type=number] { width: 4.2rem; margin-top: 0.35rem; }
+.bulletin-head { text-align: center; margin-bottom: 1.5rem; }
+.bulletin-head h1 { margin: 0.25rem 0; }
+.scripture a { color: var(--accent-cyan); }
+details summary { cursor: pointer; }
+@media (max-width: 600px) { .header { flex-direction: column; gap: 0.75rem; padding: 1rem; } .main { padding: 1rem; } .logo { font-size: 1.05rem; } }

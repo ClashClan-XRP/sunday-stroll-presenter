@@ -1,235 +1,408 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { parse } from 'pptxtojson'
+import { loadArchive, savePresentation, getPresentation, deletePresentation, newId, encodePortable, decodePortable } from './lib/store'
+import { generateDevotionals, detectTheme, DAYS, BOOKS, VERSIONS, formatRef, passageUrl, dayDate } from './lib/devotionals'
+import { downloadPptx, downloadDevotionals } from './lib/exporters'
 
-function App() {
-  const [slides, setSlides] = useState([])
-  const [currentSlide, setCurrentSlide] = useState(0)
-  const [isFullscreen, setIsFullscreen] = useState(false)
-  const [sessionId, setSessionId] = useState('')
-  const [isPresenter, setIsPresenter] = useState(true)
-  const [followUrl, setFollowUrl] = useState('')
-  const [devotionals, setDevotionals] = useState([])
-  const [view, setView] = useState('upload')
-  const fileInputRef = useRef(null)
+// ---------- helpers ----------
+const htmlToText = html => {
+  if (!html) return ''
+  const doc = new DOMParser().parseFromString(html.replace(/<\/p>/gi, '</p>\n').replace(/<br\s*\/?>/gi, '\n'), 'text/html')
+  return (doc.body.textContent || '').replace(/\u00a0/g, ' ').split('\n').map(l => l.trim()).filter(Boolean).join('\n')
+}
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const sid = params.get('session')
-    const mode = params.get('mode')
-    if (sid) {
-      setSessionId(sid)
-      setIsPresenter(mode !== 'follow')
-      setView(mode === 'follow' ? 'follow' : 'present')
-    } else {
-      const newId = Math.random().toString(36).substring(2, 10).toUpperCase()
-      setSessionId(newId)
-      setFollowUrl(`${window.location.origin}${window.location.pathname}?session=${newId}&mode=follow`)
-    }
-  }, [])
+const readUrl = () => {
+  const q = new URLSearchParams(window.location.search)
+  return { session: q.get('session'), mode: q.get('mode') || (q.get('session') ? 'present' : 'home'), what: q.get('what'), day: q.get('day'), noprint: q.get('noprint') }
+}
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0]
-    if (!file) return
+const base = () => `${window.location.origin}${window.location.pathname}`
+// The audience QR opens the all-week bulletin. (Live slide sync is deferred - see README.)
+export const bulletinUrlFor = id => `${base()}?session=${id}&mode=bulletin`
+const nextSunday = () => { const d = new Date(); d.setDate(d.getDate() + ((7 - d.getDay()) % 7)); return d.toISOString().slice(0, 10) }
 
-    const arrayBuffer = await file.arrayBuffer()
-    try {
-      const result = await parse(arrayBuffer, {
-        imageMode: 'base64',
-        videoMode: 'none',
-        audioMode: 'none'
-      })
-
-      const extractedSlides = result.slides.map((slide, idx) => {
-        let text = ''
-        let images = []
-        if (slide.elements) {
-          slide.elements.forEach(el => {
-            if (el.type === 'text' && el.content) {
-              text += el.content + '\n'
-            }
-            if (el.type === 'image' && el.src) {
-              images.push(el.src)
-            }
-          })
-        }
-        return {
-          id: idx,
-          text: text.trim() || `Slide ${idx + 1}`,
-          images,
-          raw: slide
-        }
-      })
-
-      setSlides(extractedSlides)
-      setView('present')
-      extractDevotionals(extractedSlides)
-    } catch (err) {
-      console.error('Parse error:', err)
-      alert('Could not parse PPTX. Please try another file.')
-    }
-  }
-
-  const extractDevotionals = (slidesData) => {
-    const scriptures = []
-    const regex = /([1-3]?\s?[A-Za-z]+)\s+(\d+):(\d+)(?:-(\d+))?/g
-    slidesData.forEach(slide => {
-      let match
-      while ((match = regex.exec(slide.text)) !== null) {
-        scriptures.push({
-          reference: match[0],
-          book: match[1],
-          chapter: match[2],
-          verse: match[3]
-        })
-      }
-    })
-
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-    const devos = days.map((day, i) => {
-      const scripture = scriptures[i % Math.max(scriptures.length, 1)] || { reference: 'Ephesians 5:1-2' }
-      return {
-        day,
-        title: `Walk in the Light - Day ${i + 1}`,
-        scripture: scripture.reference,
-        content: `Today we reflect on ${scripture.reference}. As imitators of God, let us walk in love as Christ loved us. This is the foundation of our week at Camp Carroll. Consider how this truth shapes your actions, speech, and relationships today.`
-      }
-    })
-    setDevotionals(devos)
-  }
-
-  const nextSlide = () => {
-    if (currentSlide < slides.length - 1) setCurrentSlide(c => c + 1)
-  }
-
-  const prevSlide = () => {
-    if (currentSlide > 0) setCurrentSlide(c => c - 1)
-  }
-
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen()
-      setIsFullscreen(true)
-    } else {
-      document.exitFullscreen()
-      setIsFullscreen(false)
-    }
-  }
-
-  if (view === 'devotionals') {
-    return (
-      <div className="app">
-        <header className="header">
-          <div className="logo">
-            <div className="logo-icon">P</div>
-            Sunday’s Walk Through The Week - Camp Carro
-          </div>
-          <button className="btn btn-secondary" onClick={() => setView('present')}>Back to Presentation</button>
-        </header>
-        <main className="main devotional-page">
-          <h1 style={{marginBottom: '2rem', textAlign: 'center'}}>Daily Devotionals</h1>
-          <p style={{textAlign: 'center', color: 'var(--text-secondary)', marginBottom: '2rem'}}>
-            Generated from the scriptures in this week's presentation
-          </p>
-          {devotionals.map((devo, idx) => (
-            <div key={idx} className="devotional-card">
-              <h2>{devo.day}</h2>
-              <h3 style={{color: 'var(--accent-green)'}}>{devo.title}</h3>
-              <div className="scripture">{devo.scripture}</div>
-              <p>{devo.content}</p>
-            </div>
-          ))}
-        </main>
-      </div>
-    )
-  }
-
-  if (view === 'follow') {
-    return (
-      <div className="app">
-        <div className="slide-viewer" style={{margin: '1rem', aspectRatio: '16/9'}}>
-          <div className="slide-content">
-            {slides[currentSlide]?.text || 'Waiting for presentation to start...'}
-          </div>
-        </div>
-        <div style={{textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)'}}>
-          Following live • Slide {currentSlide + 1} of {slides.length || '?'}
-        </div>
-      </div>
-    )
-  }
-
+function Header({ children, nav }) {
   return (
-    <div className="app">
-      <header className="header">
-        <div className="logo">
-          <div className="logo-icon">P</div>
-          Sunday’s Walk Through The Week - Camp Carro
-        </div>
-        {slides.length > 0 && (
-          <div style={{display: 'flex', gap: '1rem'}}>
-            <button className="btn btn-secondary" onClick={() => setView('devotionals')}>Devotionals</button>
-            <button className="btn" onClick={toggleFullscreen}>Fullscreen</button>
-          </div>
-        )}
-      </header>
+    <header className="header no-print">
+      <div className="logo" style={{ cursor: 'pointer' }} onClick={() => nav({ mode: 'home' })}>
+        <div className="logo-icon">P</div>
+        Sunday’s Walk Through The Week - Camp Carro
+      </div>
+      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>{children}</div>
+    </header>
+  )
+}
 
-      <main className="main">
-        {slides.length === 0 ? (
-          <div className="upload-area" onClick={() => fileInputRef.current?.click()}>
-            <h2 style={{marginBottom: '1rem'}}>Upload Your PPTX Presentation</h2>
-            <p style={{color: 'var(--text-secondary)', marginBottom: '1.5rem'}}>
-              Drop a PowerPoint file or click to browse. Styled after Proclaim for church presentations.
-            </p>
-            <button className="btn">Choose PPTX File</button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pptx"
-              style={{display: 'none'}}
-              onChange={handleFileUpload}
-            />
-          </div>
-        ) : (
-          <>
-            <div className="slide-viewer">
-              <div className="slide-content">
-                {slides[currentSlide]?.text || 'Empty slide'}
-                {slides[currentSlide]?.images?.[0] && (
-                  <img src={slides[currentSlide].images[0]} alt="" style={{maxWidth: '80%', marginTop: '1rem'}} />
-                )}
-              </div>
-            </div>
-
-            <div className="controls">
-              <button className="btn btn-secondary" onClick={prevSlide} disabled={currentSlide === 0}>← Previous</button>
-              <span style={{alignSelf: 'center'}}>Slide {currentSlide + 1} / {slides.length}</span>
-              <button className="btn btn-secondary" onClick={nextSlide} disabled={currentSlide === slides.length - 1}>Next →</button>
-              <button className="btn" onClick={toggleFullscreen}>Present Fullscreen</button>
-            </div>
-
-            <div className="qr-section">
-              <h3 style={{marginBottom: '1rem'}}>Scan to Follow Along</h3>
-              <QRCodeSVG value={followUrl} size={180} bgColor="#0f0c29" fgColor="#00e5a0" />
-              <p style={{marginTop: '1rem', color: 'var(--text-secondary)', fontSize: '0.9rem'}}>
-                {followUrl}
-              </p>
-              <p style={{marginTop: '0.5rem', fontSize: '0.85rem'}}>
-                Session: {sessionId}
-              </p>
-            </div>
-          </>
-        )}
-      </main>
-
-      {isFullscreen && (
-        <div className="fullscreen-overlay" onClick={() => setIsFullscreen(false)}>
-          <div className="slide-content" style={{fontSize: '2.5rem', padding: '4rem'}}>
-            {slides[currentSlide]?.text}
-          </div>
+function SlideFace({ slide, big, qr }) {
+  if (!slide) return <div className="slide-content">Waiting for presentation to start...</div>
+  return (
+    <div className="slide-content" style={big ? { fontSize: '2.4rem', padding: '4rem' } : null}>
+      <div className="slide-title">{slide.title}</div>
+      <div className="slide-body">{slide.body}</div>
+      {slide.images?.[0] && <img src={slide.images[0]} alt="" style={{ maxWidth: '60%', maxHeight: '40%', marginTop: '1rem' }} />}
+      {qr && (
+        <div className="title-qr" data-testid="title-qr">
+          <QRCodeSVG value={qr} size={big ? 200 : 120} bgColor="#ffffff" fgColor="#0f0c29" includeMargin />
+          <div>Scan for this week's bulletin</div>
         </div>
       )}
     </div>
+  )
+}
+
+// ---------- App ----------
+function App() {
+  const [route, setRoute] = useState(readUrl())
+  const nav = useCallback(params => {
+    const q = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && !(k === 'mode' && v === 'home')) q.set(k, v) })
+    const qs = q.toString()
+    window.history.pushState({}, '', qs ? `?${qs}` : window.location.pathname)
+    setRoute(readUrl())
+  }, [])
+  useEffect(() => {
+    const onPop = () => setRoute(readUrl())
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  const { mode, session } = route
+  if (mode === 'bulletin' || mode === 'devotionals') return <Bulletin id={session} nav={nav} />
+  if (mode === 'print') return <PrintView route={route} />
+  if (mode === 'edit') return <Editor id={session} nav={nav} />
+  if (mode === 'present') return <Presenter id={session} nav={nav} />
+  return <Home nav={nav} />
+}
+
+// ---------- Home: upload + archive (presenter link) ----------
+function Home({ nav }) {
+  const [archive, setArchive] = useState(loadArchive())
+  const [busy, setBusy] = useState(false)
+  const fileRef = useRef(null)
+
+  const onUpload = async e => {
+    const file = e.target.files[0]
+    if (!file) return
+    setBusy(true)
+    try {
+      const result = await parse(await file.arrayBuffer(), { imageMode: 'base64', videoMode: 'none', audioMode: 'none' })
+      const slides = result.slides.map((s, i) => {
+        const texts = []; const images = []
+        ;(s.elements || []).forEach(el => {
+          if (el.content) { const t = htmlToText(el.content); if (t) texts.push(t) }
+          if (el.type === 'image' && el.src) images.push(el.src)
+        })
+        return { id: `s${i}`, title: texts[0] || `Slide ${i + 1}`, body: texts.slice(1).join('\n'), notes: htmlToText(s.note || ''), images }
+      })
+      const theme = detectTheme(slides)
+      const pres = savePresentation({
+        id: newId(), title: slides[0]?.title || file.name.replace(/\.pptx$/i, ''), fileName: file.name,
+        theme, weekOf: nextSunday(), version: 'ESV', slides, devotionals: generateDevotionals(slides, theme, 'ESV'), status: 'draft', createdAt: new Date().toISOString(), publishedAt: null
+      })
+      nav({ session: pres.id, mode: 'edit' })
+    } catch (err) {
+      console.error('Parse error:', err)
+      alert('Could not parse PPTX. Please try another file.')
+    } finally { setBusy(false) }
+  }
+
+  const remove = id => { if (confirm('Delete this presentation from the archive?')) { deletePresentation(id); setArchive(loadArchive()) } }
+
+  return (
+    <div className="app">
+      <Header nav={nav} />
+      <main className="main">
+        <div className="upload-area" onClick={() => fileRef.current?.click()}>
+          <h2 style={{ marginBottom: '1rem' }}>{busy ? 'Reading slides…' : 'Upload Your PPTX Presentation'}</h2>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>Upload, review slides and devotionals, then publish. Styled after Proclaim.</p>
+          <button className="btn">Choose PPTX File</button>
+          <input ref={fileRef} data-testid="upload" type="file" accept=".pptx" style={{ display: 'none' }} onChange={onUpload} />
+        </div>
+
+        <section className="archive" data-testid="archive">
+          <h2>Presentation Archive</h2>
+          {archive.length === 0 ? <p className="muted">No previous presentations yet.</p> : (
+            <table>
+              <thead><tr><th>Title</th><th>Week of</th><th>Theme</th><th>Slides</th><th>Status</th><th>Updated</th><th /></tr></thead>
+              <tbody>
+                {archive.map(p => (
+                  <tr key={p.id}>
+                    <td><b>{p.title}</b><div className="muted small">{p.id}</div></td>
+                    <td className="small">{p.weekOf || '-'}</td>
+                    <td className="small">{p.theme}</td>
+                    <td>{p.slides.length}</td>
+                    <td><span className={`badge ${p.status}`}>{p.status === 'published' ? 'Published' : 'Draft'}</span></td>
+                    <td className="small">{new Date(p.updatedAt || p.createdAt).toLocaleString()}</td>
+                    <td className="row-actions">
+                      <button className="btn btn-secondary btn-sm" onClick={() => nav({ session: p.id, mode: 'edit' })}>Review / Edit</button>
+                      <button className="btn btn-sm" onClick={() => nav({ session: p.id, mode: 'present' })}>Present</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => nav({ session: p.id, mode: 'bulletin' })}>Bulletin</button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => remove(p.id)}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      </main>
+    </div>
+  )
+}
+
+// ---------- Structured scripture input (book / chapter / verses / version) ----------
+function RefFields({ value, onChange, disabled, testid }) {
+  const r = value || {}
+  const set = patch => onChange({ ...r, ...patch })
+  const num = v => (v === '' ? null : Math.max(1, Number(v)))
+  return (
+    <div className="ref-fields" data-testid={testid}>
+      <select value={r.book || ''} disabled={disabled} aria-label="Book" onChange={e => set({ book: e.target.value })}>
+        {BOOKS.map(b => <option key={b}>{b}</option>)}
+      </select>
+      <input type="number" min="1" aria-label="Chapter" title="Chapter" value={r.chapter ?? ''} disabled={disabled} onChange={e => set({ chapter: num(e.target.value) })} />
+      <span>:</span>
+      <input type="number" min="1" aria-label="Verse start" title="Verse start" value={r.verseStart ?? ''} disabled={disabled} onChange={e => set({ verseStart: num(e.target.value) })} />
+      <span>-</span>
+      <input type="number" min="1" aria-label="Verse end" title="Verse end (optional)" value={r.verseEnd ?? ''} disabled={disabled} onChange={e => set({ verseEnd: num(e.target.value) })} />
+      <select value={r.version || 'ESV'} disabled={disabled} aria-label="Version" onChange={e => set({ version: e.target.value })}>
+        {VERSIONS.map(v => <option key={v}>{v}</option>)}
+      </select>
+    </div>
+  )
+}
+
+// ---------- Editor: review/adjust slides + devotionals, publish ----------
+function Editor({ id, nav }) {
+  const [pres, setPres] = useState(() => getPresentation(id))
+  const [saved, setSaved] = useState(true)
+  if (!pres) return <NotFound nav={nav} />
+  const locked = pres.status === 'published'
+
+  const update = patch => { setPres(p => ({ ...p, ...patch })); setSaved(false) }
+  const setSlide = (i, patch) => update({ slides: pres.slides.map((s, j) => (j === i ? { ...s, ...patch } : s)) })
+  const move = (i, d) => { const s = [...pres.slides]; const j = i + d; if (j < 0 || j >= s.length) return; [s[i], s[j]] = [s[j], s[i]]; update({ slides: s }) }
+  const removeSlide = i => update({ slides: pres.slides.filter((_, j) => j !== i) })
+  const addSlide = () => update({ slides: [...pres.slides, { id: `s${Date.now()}`, title: 'New slide', body: '', notes: '', images: [] }] })
+  const setDevo = (i, patch) => update({ devotionals: pres.devotionals.map((d, j) => (j === i ? { ...d, ...patch } : d)) })
+  const setVersionAll = v => update({ version: v, devotionals: pres.devotionals.map(d => ({ ...d, ref: { ...d.ref, version: v } })) })
+  const save = () => { setPres(savePresentation(pres)); setSaved(true) }
+  const publish = () => { setPres(savePresentation({ ...pres, status: 'published', publishedAt: new Date().toISOString() })); setSaved(true) }
+  const unpublish = () => { setPres(savePresentation({ ...pres, status: 'draft' })); setSaved(true) }
+
+  return (
+    <div className="app">
+      <Header nav={nav}>
+        <button className="btn btn-secondary" onClick={() => nav({ mode: 'home' })}>Archive</button>
+        <button className="btn btn-secondary" onClick={save} disabled={saved}>{saved ? 'Saved' : 'Save draft'}</button>
+        {locked
+          ? <button className="btn btn-secondary" onClick={unpublish}>Unpublish to edit</button>
+          : <button className="btn" data-testid="publish" onClick={() => { publish() }}>Publish</button>}
+        <button className="btn" onClick={() => { save(); nav({ session: pres.id, mode: 'present' }) }}>Present</button>
+      </Header>
+      <main className="main">
+        <div className="meta-row">
+          <label>Title<input value={pres.title} disabled={locked} data-testid="title" onChange={e => update({ title: e.target.value })} /></label>
+          <label>Week theme<input value={pres.theme} disabled={locked} data-testid="theme" onChange={e => update({ theme: e.target.value })} /></label>
+          <label className="narrow">Sermon Sunday (week of)<input type="date" value={pres.weekOf || ''} disabled={locked} data-testid="weekof" onChange={e => update({ weekOf: e.target.value })} /></label>
+          <label className="narrow">Bible version (all days)<select value={pres.version || 'ESV'} disabled={locked} data-testid="version-all" onChange={e => setVersionAll(e.target.value)}>{VERSIONS.map(v => <option key={v}>{v}</option>)}</select></label>
+          <span className={`badge ${pres.status}`}>{locked ? 'Published' : 'Draft'}</span>
+        </div>
+
+        {locked && (
+          <div className="qr-section" data-testid="publish-qr">
+            <h3>Published {new Date(pres.publishedAt).toLocaleString()}</h3>
+            <div style={{ marginTop: '1rem' }}><QRCodeSVG value={bulletinUrlFor(pres.id)} size={170} bgColor="#ffffff" fgColor="#0f0c29" includeMargin /></div>
+            <p className="small">Scan for this week's bulletin and daily devotionals</p>
+            <p className="small muted">{bulletinUrlFor(pres.id)}</p>
+          </div>
+        )}
+
+        <div className="editor-grid">
+          <section>
+            <h2>Slides ({pres.slides.length})</h2>
+            {pres.slides.map((s, i) => (
+              <div className="edit-card" key={s.id}>
+                <div className="edit-head"><b>Slide {i + 1}</b>
+                  <span>
+                    <button className="btn-icon" disabled={locked} onClick={() => move(i, -1)}>↑</button>
+                    <button className="btn-icon" disabled={locked} onClick={() => move(i, 1)}>↓</button>
+                    <button className="btn-icon" disabled={locked} onClick={() => removeSlide(i)}>✕</button>
+                  </span>
+                </div>
+                <input value={s.title} disabled={locked} onChange={e => setSlide(i, { title: e.target.value })} />
+                <textarea rows={3} value={s.body} disabled={locked} onChange={e => setSlide(i, { body: e.target.value })} />
+              </div>
+            ))}
+            <button className="btn btn-secondary" disabled={locked} onClick={addSlide}>+ Add slide</button>
+          </section>
+          <section>
+            <h2>Devotionals (7 days)</h2>
+            <button className="btn btn-secondary btn-sm" disabled={locked} data-testid="regen" onClick={() => update({ devotionals: generateDevotionals(pres.slides, pres.theme, pres.version || 'ESV') })}>Regenerate from slides + theme</button>
+            {pres.devotionals.map((d, i) => (
+              <div className="edit-card" key={d.day} data-testid={`devo-card-${i}`}>
+                <div className="edit-head"><b>{d.day}</b><span className="muted small">{dayDate(pres.weekOf, i)}</span></div>
+                <RefFields value={d.ref} disabled={locked} testid={`ref-${i}`} onChange={ref => setDevo(i, { ref })} />
+                <input value={d.title} disabled={locked} aria-label="Devotional title" onChange={e => setDevo(i, { title: e.target.value })} />
+                <textarea rows={4} value={d.reflection} disabled={locked} data-testid={`devo-${i}`} onChange={e => setDevo(i, { reflection: e.target.value })} />
+                <input value={d.prayer} disabled={locked} aria-label="Prayer" onChange={e => setDevo(i, { prayer: e.target.value })} />
+                <input value={d.action} disabled={locked} aria-label="Today's step" onChange={e => setDevo(i, { action: e.target.value })} />
+              </div>
+            ))}
+          </section>
+        </div>
+      </main>
+    </div>
+  )
+}
+
+// ---------- Presenter: slide controls, title-slide QR, downloads ----------
+function Presenter({ id, nav }) {
+  const pres = getPresentation(id)
+  const [idx, setIdx] = useState(0)
+  const [full, setFull] = useState(false)
+  const total = pres?.slides.length || 0
+  const bulletinUrl = bulletinUrlFor(id)
+  const published = pres?.status === 'published'
+
+  const go = d => setIdx(i => Math.min(Math.max(i + d, 0), total - 1))
+  useEffect(() => {
+    const k = e => { if (['ArrowRight', 'PageDown', ' '].includes(e.key)) go(1); if (['ArrowLeft', 'PageUp'].includes(e.key)) go(-1); if (e.key === 'Escape') setFull(false) }
+    window.addEventListener('keydown', k)
+    return () => window.removeEventListener('keydown', k)
+  }, [total])
+
+  if (!pres) return <NotFound nav={nav} />
+  const enterFull = () => { document.documentElement.requestFullscreen?.().catch(() => {}); setFull(true) }
+  const exitFull = () => { if (document.fullscreenElement) document.exitFullscreen(); setFull(false) }
+  const qr = published && idx === 0 ? bulletinUrl : null
+
+  return (
+    <div className="app">
+      <Header nav={nav}>
+        <button className="btn btn-secondary" onClick={() => nav({ session: id, mode: 'edit' })}>Review / Edit</button>
+        <button className="btn btn-secondary" onClick={() => nav({ session: id, mode: 'bulletin' })}>Bulletin</button>
+        <button className="btn btn-secondary" data-testid="dl-pptx" onClick={() => downloadPptx(pres, published ? bulletinUrl : null)}>Download PPTX</button>
+        <button className="btn btn-secondary" data-testid="dl-pdf" onClick={() => window.open(`${base()}?session=${id}&mode=print&what=slides`, '_blank')}>Download PDF</button>
+      </Header>
+      <main className="main">
+        <h2 style={{ marginBottom: '1rem' }}>{pres.title} {!published && <span className="badge draft">Draft - publish to enable QR</span>}</h2>
+        <div className="slide-viewer" data-testid="presenter-slide"><SlideFace slide={pres.slides[idx]} qr={qr} /></div>
+        <div className="controls">
+          <button className="btn btn-secondary" data-testid="prev" onClick={() => go(-1)} disabled={idx === 0}>← Previous</button>
+          <span style={{ alignSelf: 'center' }}>Slide {idx + 1} / {total}</span>
+          <button className="btn btn-secondary" data-testid="next" onClick={() => go(1)} disabled={idx === total - 1}>Next →</button>
+          <button className="btn" onClick={enterFull}>Present Fullscreen</button>
+        </div>
+        {pres.slides[idx]?.notes && <div className="notes"><b>Notes:</b> {pres.slides[idx].notes}</div>}
+        {published ? (
+          <div className="qr-section">
+            <h3 style={{ marginBottom: '1rem' }}>Scan for This Week's Bulletin</h3>
+            <QRCodeSVG value={bulletinUrl} size={180} bgColor="#ffffff" fgColor="#0f0c29" includeMargin />
+            <p className="small muted" style={{ marginTop: '1rem' }}>{bulletinUrl}</p>
+          </div>
+        ) : <div className="qr-section"><p className="muted">Publish this presentation from Review / Edit to show the audience QR code.</p></div>}
+      </main>
+      {full && (
+        <div className="fullscreen-overlay" onClick={() => go(1)}>
+          <SlideFace slide={pres.slides[idx]} big qr={qr} />
+          <button className="btn btn-secondary exit-full" onClick={e => { e.stopPropagation(); exitFull() }}>Exit</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- Client bulletin: sermon outline + devotionals all week; print/download day or week ----------
+function Bulletin({ id, nav }) {
+  const hash = new URLSearchParams(window.location.hash.slice(1)).get('d')
+  const pres = (hash && decodePortable(hash)) || getPresentation(id)
+  if (!pres) return <NotFound nav={nav} msg="This bulletin isn't stored on this device. Ask the presenter for the portable bulletin link." />
+  if (!hash && pres.status !== 'published') return <NotFound nav={nav} msg="This bulletin hasn't been published yet." />
+  // Highlight today only when today falls inside this bulletin's week (Mon-Sun after the sermon Sunday).
+  const todayIdx = (() => {
+    if (!pres.weekOf) return (new Date().getDay() + 6) % 7
+    const start = new Date(`${pres.weekOf}T00:00:00`); const diff = Math.floor((Date.now() - start) / 86400000) - 1
+    return diff >= 0 && diff < 7 ? diff : -1
+  })()
+  const today = DAYS[todayIdx]
+  const portable = `${bulletinUrlFor(id)}#d=${encodePortable(pres)}`
+  const printUrl = (what, day) => `${base()}?session=${id}&mode=print&what=${what}${day !== undefined ? `&day=${day}` : ''}${hash ? `#d=${hash}` : ''}`
+  return (
+    <div className="app">
+      <Header nav={nav}>
+        <button className="btn btn-secondary" data-testid="print-week" onClick={() => window.open(printUrl('week'), '_blank')}>Print / PDF week</button>
+        <button className="btn btn-secondary" data-testid="dl-week" onClick={() => downloadDevotionals(pres, pres.devotionals, 'html', 'week')}>Download week</button>
+        <button className="btn btn-secondary" data-testid="dl-week-txt" onClick={() => downloadDevotionals(pres, pres.devotionals, 'txt', 'week')}>Save week (.txt)</button>
+        <button className="btn btn-secondary" data-testid="copy-portable" onClick={() => navigator.clipboard?.writeText(portable)}>Copy share link</button>
+      </Header>
+      <main className="main devotional-page bulletin">
+        <div className="bulletin-head">
+          <div className="muted small">Sunday’s Walk Through The Week • Camp Carroll</div>
+          <h1>{pres.title}</h1>
+          <p className="muted">{pres.theme}{pres.weekOf ? ` • Week of ${new Date(`${pres.weekOf}T12:00:00`).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}` : ''}</p>
+        </div>
+        {pres.slides?.length > 0 && (
+          <details className="devotional-card" data-testid="outline">
+            <summary><b>Sermon outline</b> ({pres.slides.length} points)</summary>
+            <ol style={{ margin: '0.75rem 0 0 1.25rem' }}>{pres.slides.slice(1).map(s => <li key={s.id}>{s.title}</li>)}</ol>
+          </details>
+        )}
+        {pres.devotionals.map((d, i) => (
+          <div key={d.day} className={`devotional-card ${d.day === today ? 'today' : ''}`} data-testid={`day-${i}`}>
+            <h2>{d.day} <span className="muted small">{dayDate(pres.weekOf, i)}</span> {d.day === today && <span className="badge published">Today</span>}</h2>
+            <h3 style={{ color: 'var(--accent-green)' }}>{d.title}</h3>
+            <div className="scripture"><a href={passageUrl(d.ref)} target="_blank" rel="noreferrer">{formatRef(d.ref)}</a></div>
+            <p>{d.reflection}</p>
+            <p style={{ marginTop: '0.5rem' }}><b>Prayer:</b> {d.prayer}</p>
+            <p style={{ marginTop: '0.5rem' }}><b>Today:</b> {d.action}</p>
+            <div className="row-actions" style={{ marginTop: '1rem' }}>
+              <button className="btn btn-secondary btn-sm" data-testid={`print-day-${i}`} onClick={() => window.open(printUrl('day', i), '_blank')}>Print day</button>
+              <button className="btn btn-secondary btn-sm" data-testid={`dl-day-${i}`} onClick={() => downloadDevotionals(pres, [d], 'html', d.day)}>Download day</button>
+            </div>
+          </div>
+        ))}
+      </main>
+    </div>
+  )
+}
+
+// ---------- Print view (browser print-to-PDF) ----------
+function PrintView({ route }) {
+  const hash = new URLSearchParams(window.location.hash.slice(1)).get('d')
+  const pres = (hash && decodePortable(hash)) || getPresentation(route.session)
+  useEffect(() => { if (pres && !route.noprint) setTimeout(() => window.print(), 400) }, [])
+  if (!pres) return <p style={{ padding: '2rem' }}>Nothing to print.</p>
+  if (route.what === 'slides') {
+    return (
+      <div className="print-root">
+        {pres.slides.map((s, i) => (
+          <div className="print-slide" key={s.id}>
+            <div className="ps-title">{s.title}</div>
+            <div className="ps-body">{s.body}</div>
+            {i === 0 && pres.status === 'published' && <div className="ps-qr"><QRCodeSVG value={bulletinUrlFor(pres.id)} size={110} includeMargin /></div>}
+            <div className="ps-foot">{pres.title} • {i + 1}/{pres.slides.length}</div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  const idxs = route.what === 'day' ? [Number(route.day) || 0] : pres.devotionals.map((_, i) => i)
+  return (
+    <div className="print-root print-devos">
+      <h1>{pres.title}</h1><p><i>{pres.theme}</i></p>
+      {idxs.map(i => { const d = pres.devotionals[i]; return (
+        <section key={d.day}><h2>{d.day}{pres.weekOf ? ` (${dayDate(pres.weekOf, i)})` : ''}: {d.title}</h2><p className="ref">{formatRef(d.ref)}</p><p>{d.reflection}</p><p><b>Prayer:</b> {d.prayer}</p><p><b>Today:</b> {d.action}</p></section>
+      ) })}
+    </div>
+  )
+}
+
+function NotFound({ nav, msg }) {
+  return (
+    <div className="app"><Header nav={nav} /><main className="main"><p>{msg || 'Presentation not found in this browser’s archive.'}</p>
+      <button className="btn" style={{ marginTop: '1rem' }} onClick={() => nav({ mode: 'home' })}>Go to archive</button></main></div>
   )
 }
 
