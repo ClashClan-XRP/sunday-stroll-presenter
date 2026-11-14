@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { parse } from 'pptxtojson'
-import { loadArchive, savePresentation, getPresentation, deletePresentation, newId, encodePortable, decodePortable } from './lib/store'
+import { loadArchive, savePresentation, getPresentation, deletePresentation, newId, encodePortable, decodePortable, seedFromServer } from './lib/store'
 import { generateDevotionals, detectTheme, DAYS, BOOKS, VERSIONS, formatRef, passageUrl, dayDate } from './lib/devotionals'
 import { downloadPptx, downloadDevotionals } from './lib/exporters'
 
@@ -67,7 +67,11 @@ function App() {
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
+  const [ready, setReady] = useState(false)
+  useEffect(() => { seedFromServer().finally(() => setReady(true)) }, [])
+
   const { mode, session } = route
+  if (!ready) return <div className="app"><main className="main"><p className="muted">Loading…</p></main></div>
   if (mode === 'bulletin' || mode === 'devotionals') return <Bulletin id={session} nav={nav} />
   if (mode === 'print') return <PrintView route={route} />
   if (mode === 'edit') return <Editor id={session} nav={nav} />

@@ -49,3 +49,20 @@ export function decodePortable(str) {
     return { title: o.t, theme: o.th, weekOf: o.w, devotionals: o.d, publishedAt: o.p, slides: [] }
   } catch { return null }
 }
+
+// Static "server copy": published sessions exported to public/sessions/*.json.
+// On a new device the archive is empty, so import any published session it doesn't have yet.
+// Local copies are never overwritten.
+export async function seedFromServer() {
+  try {
+    const res = await fetch('sessions/index.json', { cache: 'no-store' })
+    if (!res.ok) return
+    const ids = await res.json()
+    const have = new Set(loadArchive().map(p => p.id))
+    for (const id of ids) {
+      if (have.has(id)) continue
+      const r = await fetch(`sessions/${id}.json`, { cache: 'no-store' })
+      if (r.ok) { const pres = await r.json(); write([...loadArchive(), pres]) }
+    }
+  } catch (e) { console.warn('seedFromServer failed', e) }
+}
