@@ -345,7 +345,7 @@ function Bulletin({ id, nav }) {
         </div>
         {pres.slides?.length > 0 && (
           <details className="devotional-card" data-testid="outline">
-            <summary><b>Sermon outline</b> ({pres.slides.length} points)</summary>
+            <summary><b>Order of service &amp; sermon outline</b> ({pres.slides.length - 1} items)</summary>
             <ol style={{ margin: '0.75rem 0 0 1.25rem' }}>{pres.slides.slice(1).map(s => <li key={s.id}>{s.title}</li>)}</ol>
           </details>
         )}
