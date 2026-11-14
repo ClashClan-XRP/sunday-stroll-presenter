@@ -53,3 +53,26 @@ Built with the Ephesians 5 outline in mind (Camp Carroll / USAG Daegu style). De
 - Or add a Node backend for WebSockets
 
 Styled after Proclaim: dark UI, vibrant accents, church-focused presentation experience.
+
+## Phone as remote (no account needed)
+
+1. On the laptop open the presentation, click **📱 Remote**. A pairing code (8 random characters) and a small QR appear.
+2. On the phone scan that QR (or open `https://clashclan-xrp.github.io/sunday-stroll-presenter/?remote` and type the code).
+3. Click **Present Fullscreen** on the laptop. The phone shows the current and next slide, notes, Prev / Next, a jump list and Black screen. The laptop keyboard and clicker keep working; the phone follows along.
+
+How it connects: the laptop opens three free public relays at once and the phone uses whichever works first:
+direct WebRTC via the PeerJS cloud, Nostr public relays (port 443, works through most firewalls), and public MQTT brokers.
+Relay traffic is encrypted with a key derived from the pairing code, so nobody without the code can read it or send commands.
+These public relays are best-effort with no uptime guarantee; for production use Firebase/Supabase or a self-hosted relay.
+
+## Fullscreen controls
+
+Next: → ↓ PageDown Space Enter N, click/tap the right half, swipe left. Back: ← ↑ PageUp Backspace P, click/tap the left half, swipe right.
+Home/End jump to the first/last slide, B or . toggles a black screen, Esc exits. Most presentation clickers send PageUp/PageDown and work as-is.
+
+## PPTX import fidelity
+
+Kept from the uploaded file: pictures (compressed if large), solid / gradient / picture backgrounds, text boxes with their fonts, colors and positions,
+filled shapes, groups, and pictures from the slide layout/master. Not rendered: tables, charts, SmartArt, video/audio, and complex shape outlines.
+If you edit a slide's text in Review / Edit, that slide switches to a simple text layout (you can restore the original).
+Large picture-heavy decks may hit the browser's local storage limit (about 5 MB); pictures are then dropped from the saved copy.

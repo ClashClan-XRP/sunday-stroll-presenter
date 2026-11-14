@@ -4,6 +4,9 @@ import { parse } from 'pptxtojson'
 import { loadArchive, savePresentation, getPresentation, deletePresentation, newId, encodePortable, decodePortable, seedFromServer, fetchServerSession, exportSessionJson } from './lib/store'
 import { generateDevotionals, detectTheme, DAYS, BOOKS, VERSIONS, formatRef, passageUrl, dayDate } from './lib/devotionals'
 import { downloadPptx, downloadDevotionals } from './lib/exporters'
+import { SlideStage } from './SlideStage'
+import { importSlides } from './lib/pptxImport'
+import { newPairCode, normalizeCode, startHost, startRemote, lightSlide } from './lib/remote'
 
 // ---------- helpers ----------
 const htmlToText = html => {
@@ -14,6 +17,7 @@ const htmlToText = html => {
 
 const readUrl = () => {
   const q = new URLSearchParams(window.location.search)
+  if (q.has('remote')) return { mode: 'remote', code: normalizeCode(q.get('remote')) }
   return { session: q.get('session'), mode: q.get('mode') || (q.get('session') ? 'present' : 'home'), what: q.get('what'), day: q.get('day'), noprint: q.get('noprint') }
 }
 
@@ -36,29 +40,6 @@ function Header({ children, nav, viewer }) {
 
 // Sermon title = the main heading for the title slide and bulletin (falls back to the title slide's subtitle).
 export const sermonTitleOf = pres => pres?.sermonTitle || (pres?.slides?.[0]?.body || '').split('\n').find(l => l.trim()) || pres?.theme || pres?.title || ''
-
-function SlideFace({ slide, big, qr, sermonTitle }) {
-  if (!slide) return <div className="slide-content">Waiting for presentation to start...</div>
-  const body = sermonTitle ? (slide.body || '').split('\n').filter(l => l.trim() !== sermonTitle.trim()).join('\n') : slide.body
-  return (
-    <div className={`slide-content ${qr ? 'has-qr' : ''}`} style={big ? { fontSize: '2.4rem', padding: '4rem' } : null}>
-      {sermonTitle ? (
-        <>
-          <div className="slide-title" data-testid="slide-main-title">{sermonTitle}</div>
-          <div className="slide-subtitle">{slide.title}</div>
-        </>
-      ) : <div className="slide-title">{slide.title}</div>}
-      <div className="slide-body">{body}</div>
-      {slide.images?.[0] && <img src={slide.images[0]} alt="" style={{ maxWidth: '60%', maxHeight: '40%', marginTop: '1rem' }} />}
-      {qr && (
-        <div className="title-qr" data-testid="title-qr">
-          <QRCodeSVG value={qr} size={big ? 200 : 120} bgColor="#ffffff" fgColor="#0f0c29" includeMargin />
-          <div>Scan for this week's bulletin</div>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ---------- App ----------
 function App() {
@@ -83,6 +64,7 @@ function App() {
   if (!ready) return <div className="app"><main className="main"><p className="muted">Loading…</p></main></div>
   if (mode === 'bulletin' || mode === 'devotionals') return <Bulletin id={session} nav={nav} />
   if (mode === 'print') return <PrintView route={route} />
+  if (mode === 'remote') return <RemoteControl code={route.code} />
   if (mode === 'edit') return <Editor id={session} nav={nav} />
   if (mode === 'present') return <Presenter id={session} nav={nav} />
   return <Home nav={nav} />
@@ -100,14 +82,7 @@ function Home({ nav }) {
     setBusy(true)
     try {
       const result = await parse(await file.arrayBuffer(), { imageMode: 'base64', videoMode: 'none', audioMode: 'none' })
-      const slides = result.slides.map((s, i) => {
-        const texts = []; const images = []
-        ;(s.elements || []).forEach(el => {
-          if (el.content) { const t = htmlToText(el.content); if (t) texts.push(t) }
-          if (el.type === 'image' && el.src) images.push(el.src)
-        })
-        return { id: `s${i}`, title: texts[0] || `Slide ${i + 1}`, body: texts.slice(1).join('\n'), notes: htmlToText(s.note || ''), images }
-      })
+      const slides = await importSlides(result, htmlToText)
       const theme = detectTheme(slides)
       const pres = savePresentation({
         id: newId(), title: slides[0]?.title || file.name.replace(/\.pptx$/i, ''), fileName: file.name,
@@ -194,7 +169,7 @@ function Editor({ id, nav }) {
   const locked = pres.status === 'published'
 
   const update = patch => { setPres(p => ({ ...p, ...patch })); setSaved(false) }
-  const setSlide = (i, patch) => update({ slides: pres.slides.map((s, j) => (j === i ? { ...s, ...patch } : s)) })
+  const setSlide = (i, patch) => update({ slides: pres.slides.map((s, j) => (j === i ? { ...s, ...patch, edited: ('title' in patch || 'body' in patch) ? true : s.edited } : s)) })
   const move = (i, d) => { const s = [...pres.slides]; const j = i + d; if (j < 0 || j >= s.length) return; [s[i], s[j]] = [s[j], s[i]]; update({ slides: s }) }
   const removeSlide = i => update({ slides: pres.slides.filter((_, j) => j !== i) })
   const addSlide = () => update({ slides: [...pres.slides, { id: `s${Date.now()}`, title: 'New slide', body: '', notes: '', images: [] }] })
@@ -251,6 +226,10 @@ function Editor({ id, nav }) {
                     <button className="btn-icon" disabled={locked} onClick={() => removeSlide(i)}>✕</button>
                   </span>
                 </div>
+                <SlideStage slide={s} className="edit-preview" />
+                {s.elements?.length > 0 && (s.edited
+                  ? <p className="small muted">Text edited: showing simple layout. <button className="btn-icon" disabled={locked} onClick={() => setSlide(i, { edited: false, title: s.title })}>Restore original layout</button></p>
+                  : <p className="small muted">Original layout and pictures kept. Editing the text switches this slide to the simple layout.</p>)}
                 <input value={s.title} disabled={locked} onChange={e => setSlide(i, { title: e.target.value })} />
                 <textarea rows={3} value={s.body} disabled={locked} onChange={e => setSlide(i, { body: e.target.value })} />
               </div>
@@ -277,26 +256,88 @@ function Editor({ id, nav }) {
   )
 }
 
-// ---------- Presenter: slide controls, title-slide QR, downloads ----------
+// ---------- Presenter: slide controls, title-slide QR, downloads, phone remote ----------
+const NEXT_KEYS = ['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'n', 'N', 'MediaTrackNext']
+const PREV_KEYS = ['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'p', 'P', 'MediaTrackPrevious']
+
 function Presenter({ id, nav }) {
   const pres = getPresentation(id)
   const [idx, setIdx] = useState(0)
   const [full, setFull] = useState(false)
+  const [black, setBlack] = useState(false)
+  const [remoteOpen, setRemoteOpen] = useState(false)
+  const [remote, setRemote] = useState(null) // { code, status }
+  const hostRef = useRef(null)
+  const touch = useRef(null)
   const total = pres?.slides.length || 0
   const bulletinUrl = bulletinUrlFor(id)
   const published = pres?.status === 'published'
+  const stateRef = useRef({})
 
-  const go = d => setIdx(i => Math.min(Math.max(i + d, 0), total - 1))
+  const go = d => setIdx(i => Math.min(Math.max(i + d, 0), Math.max(total - 1, 0)))
+  const goto = n => setIdx(Math.min(Math.max(n, 0), Math.max(total - 1, 0)))
+
+  // Keyboard + presentation clickers (they send PageUp/PageDown, arrows, B or . for black)
   useEffect(() => {
-    const k = e => { if (['ArrowRight', 'PageDown', ' '].includes(e.key)) go(1); if (['ArrowLeft', 'PageUp'].includes(e.key)) go(-1); if (e.key === 'Escape') setFull(false) }
+    const k = e => {
+      if (e.target?.closest?.('input, textarea, select')) return
+      if (NEXT_KEYS.includes(e.key)) { e.preventDefault(); go(1) }
+      else if (PREV_KEYS.includes(e.key)) { e.preventDefault(); go(-1) }
+      else if (e.key === 'Home') goto(0)
+      else if (e.key === 'End') goto(total - 1)
+      else if (['b', 'B', '.'].includes(e.key)) setBlack(v => !v)
+      else if (e.key === 'Escape') setFull(false)
+    }
     window.addEventListener('keydown', k)
-    return () => window.removeEventListener('keydown', k)
+    const fs = () => { if (!document.fullscreenElement) setFull(false) }
+    document.addEventListener('fullscreenchange', fs)
+    return () => { window.removeEventListener('keydown', k); document.removeEventListener('fullscreenchange', fs) }
   }, [total])
+
+  // Phone remote: state sent to the phone on every change
+  stateRef.current = {
+    idx, total, black, title: pres?.title, sermonTitle: sermonTitleOf(pres),
+    cur: lightSlide(pres?.slides[idx]), next: lightSlide(pres?.slides[idx + 1]), notes: pres?.slides[idx]?.notes || '',
+    titles: pres?.slides.map(s => s.title) || []
+  }
+  useEffect(() => { hostRef.current?.broadcast(stateRef.current) }, [idx, black])
+  const startRemoteHost = () => {
+    setRemoteOpen(true)
+    if (hostRef.current) return
+    let code = sessionStorage.getItem(`ssp_pair_${id}`)
+    if (!code) { code = newPairCode(); sessionStorage.setItem(`ssp_pair_${id}`, code) }
+    setRemote({ code, status: { peer: 'connecting', mqtt: 'connecting', phones: 0 } })
+    hostRef.current = startHost(code, {
+      getState: () => stateRef.current,
+      onStatus: st => setRemote(r => ({ ...r, status: st })),
+      onCommand: m => {
+        if (m.c === 'next') go(1)
+        else if (m.c === 'prev') go(-1)
+        else if (m.c === 'goto') goto(Number(m.n) || 0)
+        else if (m.c === 'black') setBlack(v => (typeof m.on === 'boolean' ? m.on : !v))
+      }
+    })
+  }
+  useEffect(() => () => hostRef.current?.stop(), [])
 
   if (!pres) return <NotFound nav={nav} />
   const enterFull = () => { document.documentElement.requestFullscreen?.().catch(() => {}); setFull(true) }
   const exitFull = () => { if (document.fullscreenElement) document.exitFullscreen(); setFull(false) }
   const qr = published && idx === 0 ? bulletinUrl : null
+  const remoteUrl = remote ? `${base()}?remote=${remote.code}` : ''
+  const relayPhone = remote?.status?.relayPhone && Date.now() - remote.status.relayPhone < 10 * 60 * 1000
+  const phoneConnected = remote?.status?.phones > 0 || relayPhone
+  const statusLine = remote ? `Direct WebRTC: ${remote.status.peer} • Nostr relay: ${remote.status.relay} • MQTT: ${remote.status.mqtt}${remote.status.phones ? ` • ${remote.status.phones} phone(s) direct` : relayPhone ? ' • phone via relay' : ''}` : ''
+
+  // Fullscreen: tap/click left half = back, right half = next; swipe right = back, swipe left = next
+  const onStageClick = e => { const r = e.currentTarget.getBoundingClientRect(); go(e.clientX - r.left < r.width / 2 ? -1 : 1) }
+  const onTouchStart = e => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY } }
+  const onTouchEnd = e => {
+    const s = touch.current; touch.current = null
+    if (!s) return
+    const t = e.changedTouches[0]; const dx = t.clientX - s.x, dy = t.clientY - s.y
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) { e.preventDefault(); go(dx > 0 ? -1 : 1) }
+  }
 
   return (
     <div className="app">
@@ -305,15 +346,29 @@ function Presenter({ id, nav }) {
         <button className="btn btn-secondary" onClick={() => nav({ session: id, mode: 'bulletin' })}>Bulletin</button>
         <button className="btn btn-secondary" data-testid="dl-pptx" onClick={() => downloadPptx(pres, published ? bulletinUrl : null)}>Download PPTX</button>
         <button className="btn btn-secondary" data-testid="dl-pdf" onClick={() => window.open(`${base()}?session=${id}&mode=print&what=slides`, '_blank')}>Download PDF</button>
+        <button className="btn" data-testid="remote-btn" onClick={startRemoteHost}>📱 Remote</button>
       </Header>
       <main className="main">
         <h2 style={{ marginBottom: '1rem' }}>{pres.title} {!published && <span className="badge draft">Draft - publish to enable QR</span>}</h2>
-        <div className="slide-viewer" data-testid="presenter-slide"><SlideFace slide={pres.slides[idx]} qr={qr} sermonTitle={idx === 0 ? sermonTitleOf(pres) : null} /></div>
+        {remoteOpen && remote && (
+          <div className="remote-panel" data-testid="remote-panel">
+            <div><QRCodeSVG value={remoteUrl} size={120} bgColor="#ffffff" fgColor="#0f0c29" includeMargin /></div>
+            <div>
+              <h3>Phone remote</h3>
+              <p>Scan with the presenter's phone, or open <b>{base().replace(/^https?:\/\//, '')}?remote</b> and enter the code</p>
+              <div className="pair-code" data-testid="pair-code">{remote.code}</div>
+              <p className={`remote-status ${phoneConnected ? 'ok' : ''}`} data-testid="host-status">{phoneConnected ? '● Phone connected' : '○ Waiting for phone'} <span className="small muted">({statusLine})</span></p>
+              <button className="btn btn-secondary btn-sm" onClick={() => setRemoteOpen(false)}>Hide</button>
+            </div>
+          </div>
+        )}
+        <SlideStage slide={pres.slides[idx]} qr={qr} sermonTitle={idx === 0 ? sermonTitleOf(pres) : null} className="presenter-stage" testid="presenter-slide" />
         <div className="controls">
           <button className="btn btn-secondary" data-testid="prev" onClick={() => go(-1)} disabled={idx === 0}>← Previous</button>
-          <span style={{ alignSelf: 'center' }}>Slide {idx + 1} / {total}</span>
+          <span style={{ alignSelf: 'center' }} data-testid="slide-counter">Slide {idx + 1} / {total}</span>
           <button className="btn btn-secondary" data-testid="next" onClick={() => go(1)} disabled={idx === total - 1}>Next →</button>
-          <button className="btn" onClick={enterFull}>Present Fullscreen</button>
+          <button className="btn btn-secondary" onClick={() => setBlack(v => !v)}>{black ? 'Unblack' : 'Black screen (B)'}</button>
+          <button className="btn" data-testid="fullscreen" onClick={enterFull}>Present Fullscreen</button>
         </div>
         {pres.slides[idx]?.notes && <div className="notes"><b>Notes:</b> {pres.slides[idx].notes}</div>}
         {published ? (
@@ -324,12 +379,71 @@ function Presenter({ id, nav }) {
           </div>
         ) : <div className="qr-section"><p className="muted">Publish this presentation from Review / Edit to show the audience QR code.</p></div>}
       </main>
+      {black && !full && <div className="black-veil" onClick={() => setBlack(false)} />}
       {full && (
-        <div className="fullscreen-overlay" onClick={() => go(1)}>
-          <SlideFace slide={pres.slides[idx]} big qr={qr} sermonTitle={idx === 0 ? sermonTitleOf(pres) : null} />
-          <button className="btn btn-secondary exit-full" onClick={e => { e.stopPropagation(); exitFull() }}>Exit</button>
+        <div className="fullscreen-overlay" data-testid="fs-overlay" onClick={onStageClick} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          <SlideStage slide={pres.slides[idx]} qr={qr} sermonTitle={idx === 0 ? sermonTitleOf(pres) : null} className="fs-stage" fill />
+          {black && <div className="black-veil" />}
+          <div className="fs-controls" onClick={e => e.stopPropagation()}>
+            <button aria-label="Previous slide" data-testid="fs-prev" onClick={() => go(-1)}>‹</button>
+            <span>{idx + 1} / {total}</span>
+            <button aria-label="Next slide" data-testid="fs-next" onClick={() => go(1)}>›</button>
+            {remote && <span className={`dot ${phoneConnected ? 'ok' : ''}`} title={statusLine} />}
+            <button aria-label="Exit fullscreen" onClick={exitFull}>✕</button>
+          </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ---------- Phone remote (?remote=CODE) ----------
+function RemoteControl({ code: initial }) {
+  const [code, setCode] = useState(initial || '')
+  const [entered, setEntered] = useState(initial || '')
+  const [state, setState] = useState(null)
+  const [status, setStatus] = useState({ state: 'idle' })
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!code) return
+    ref.current = startRemote(code, { onState: setState, onStatus: setStatus })
+    return () => ref.current?.stop()
+  }, [code])
+  const send = c => ref.current?.send(c)
+  if (!code) {
+    return (
+      <div className="app remote-app"><main className="main">
+        <h2>Sunday Stroll remote</h2>
+        <p className="muted">Enter the code shown on the presenter laptop.</p>
+        <input data-testid="code-input" value={entered} onChange={e => setEntered(normalizeCode(e.target.value))} placeholder="PAIRCODE" style={{ fontSize: '1.5rem', letterSpacing: '0.2em', textAlign: 'center' }} />
+        <button className="btn" style={{ marginTop: '1rem', width: '100%' }} onClick={() => { window.history.replaceState({}, '', `?remote=${entered}`); setCode(entered) }}>Connect</button>
+      </main></div>
+    )
+  }
+  const ok = status.state === 'connected'
+  return (
+    <div className="app remote-app">
+      <div className={`remote-bar ${ok ? 'ok' : ''}`} data-testid="remote-status">{ok ? '● Connected' : `○ ${status.state}`}{status.via ? ` • ${status.via}` : ''} • {code}</div>
+      <main className="main">
+        {state ? <>
+          <div className="remote-title">{state.sermonTitle || state.title}</div>
+          <div className="remote-label">Now: <b data-testid="remote-counter">{state.idx + 1} / {state.total}</b>{state.black && <span className="badge draft">BLACK</span>}</div>
+          <SlideStage slide={state.cur} className="remote-cur" testid="remote-cur" />
+          <div className="remote-buttons">
+            <button className="btn btn-secondary big" data-testid="r-prev" onClick={() => send({ c: 'prev' })} disabled={state.idx === 0}>‹ Prev</button>
+            <button className="btn big" data-testid="r-next" onClick={() => send({ c: 'next' })} disabled={state.idx >= state.total - 1}>Next ›</button>
+          </div>
+          <div className="remote-row">
+            <button className="btn btn-secondary btn-sm" data-testid="r-black" onClick={() => send({ c: 'black' })}>{state.black ? 'Show slides' : 'Black screen'}</button>
+            <select data-testid="r-goto" value={state.idx} onChange={e => send({ c: 'goto', n: Number(e.target.value) })}>
+              {state.titles.map((t, i) => <option key={i} value={i}>{i + 1}. {t}</option>)}
+            </select>
+          </div>
+          {state.notes && <div className="notes"><b>Notes:</b> {state.notes}</div>}
+          <div className="remote-label">Next:</div>
+          {state.next ? <SlideStage slide={state.next} className="remote-next" /> : <p className="muted">End of presentation</p>}
+        </> : <p className="muted">Waiting for the presenter laptop… Make sure the presenter page is open and its Remote panel is showing this code.</p>}
+      </main>
     </div>
   )
 }
@@ -409,9 +523,7 @@ function PrintView({ route }) {
       <div className="print-root">
         {pres.slides.map((s, i) => (
           <div className="print-slide" key={s.id}>
-            <div className="ps-title">{s.title}</div>
-            <div className="ps-body">{s.body}</div>
-            {i === 0 && pres.status === 'published' && <div className="ps-qr"><QRCodeSVG value={bulletinUrlFor(pres.id)} size={110} includeMargin /></div>}
+            <SlideStage slide={s} qr={i === 0 && pres.status === 'published' ? bulletinUrlFor(pres.id) : null} sermonTitle={i === 0 ? sermonTitleOf(pres) : null} className="print-stage" />
             <div className="ps-foot">{pres.title} • {i + 1}/{pres.slides.length}</div>
           </div>
         ))}
