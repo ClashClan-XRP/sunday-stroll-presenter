@@ -83,8 +83,11 @@ export async function seedFromServer() {
 }
 
 // Read one published session from the static server copy (used by bulletin/print links even if hidden locally).
+let indexP = null
+const hostedIds = () => (indexP ||= fetch('sessions/index.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : [])).catch(() => []))
 export async function fetchServerSession(id) {
   try {
+    if (!(await hostedIds()).includes(id)) return null // not hosted: skip the request (avoids a 404)
     const r = await fetch(`sessions/${id}.json`, { cache: 'no-store' })
     return r.ok ? await r.json() : null
   } catch { return null }
