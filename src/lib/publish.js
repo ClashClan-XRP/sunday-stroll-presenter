@@ -9,7 +9,7 @@ import { SimplePool } from 'nostr-tools/pool'
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure'
 import { bytesToHex, hexToBytes } from 'nostr-tools/utils'
 
-export const BULLETIN_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://relay.nostr.band']
+export const BULLETIN_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://relay.snort.social', 'wss://offchain.pub', 'wss://nostr.oxtr.dev']
 const KIND = 30078
 const dTag = id => `sunday-stroll-bulletin:${id}`
 
@@ -51,13 +51,35 @@ export async function publishOnline(pres) {
   return { ok, total: BULLETIN_RELAYS.length, a: pubToShort(pub), at: new Date().toISOString() }
 }
 
-export async function fetchOnline(id, a) {
+const inflight = new Map()
+export function fetchOnline(id, a, waitMs = 10000) {
+  const k = `${id}|${a}`
+  if (!inflight.has(k)) inflight.set(k, fetchOnce(id, a, waitMs).finally(() => setTimeout(() => inflight.delete(k), 2000)))
+  return inflight.get(k)
+}
+function fetchOnce(id, a, waitMs) {
   const pub = shortToPub(a)
-  if (!pub) return null
+  if (!pub) return Promise.resolve(null)
   const pool = new SimplePool()
-  try {
-    const evs = await pool.querySync(BULLETIN_RELAYS, { kinds: [KIND], authors: [pub], '#d': [dTag(id)] }, { maxWait: 6000 })
-    const ev = evs.filter(e => e.pubkey === pub).sort((x, y) => y.created_at - x.created_at)[0]
-    return ev ? { ...(await decompress(ev.content)), id } : null
-  } catch { return null } finally { setTimeout(() => { try { pool.close(BULLETIN_RELAYS) } catch {} }, 300) }
+  return new Promise(resolve => {
+    let best = null, done = false, sub = null
+    const finish = async () => {
+      if (done) return
+      done = true
+      try { sub?.close() } catch {}
+      setTimeout(() => { try { pool.close(BULLETIN_RELAYS) } catch {} }, 300)
+      resolve(best ? { ...(await decompress(best.content)), id } : null)
+    }
+    let grace = null
+    sub = pool.subscribeMany(BULLETIN_RELAYS, { kinds: [KIND], authors: [pub], '#d': [dTag(id)] }, {
+      onevent: ev => {
+        if (ev.pubkey !== pub) return
+        if (!best || ev.created_at > best.created_at) best = ev
+        // a relay answered: give the others a moment to offer a newer version, then show it
+        if (!grace) grace = setTimeout(finish, 1200)
+      },
+      oneose: () => { if (best) finish() }
+    })
+    setTimeout(finish, waitMs)
+  })
 }

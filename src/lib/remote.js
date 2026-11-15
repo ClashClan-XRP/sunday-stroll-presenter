@@ -86,7 +86,7 @@ function makeGuard() {
 const randomId = () => b64(crypto.getRandomValues(new Uint8Array(9)))
 
 // ---- transports: each delivers opaque sealed strings ----
-export const NOSTR_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://relay.nostr.band']
+export const NOSTR_RELAYS = ['wss://relay.damus.io', 'wss://nos.lol', 'wss://relay.primal.net', 'wss://relay.snort.social', 'wss://offchain.pub', 'wss://nostr.oxtr.dev']
 const KIND = 21777 // ephemeral range: relays forward but don't store
 function nostrTransport(chan, onPayload, onStatus) {
   const pool = new SimplePool({ enablePing: true, enableReconnect: true })

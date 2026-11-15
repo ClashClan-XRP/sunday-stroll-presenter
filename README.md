@@ -56,14 +56,26 @@ Styled after Proclaim: dark UI, vibrant accents, church-focused presentation exp
 
 ## Phone as remote (no account needed)
 
-1. On the laptop open the presentation, click **📱 Remote**. A pairing code (8 random characters) and a small QR appear.
+1. On the laptop open the presentation, click **📱 Remote**. A pairing code (18 random characters, about 89 bits, shown as XXXXXX-XXXXXX-XXXXXX) and a small QR appear.
 2. On the phone scan that QR (or open `https://clashclan-xrp.github.io/sunday-stroll-presenter/?remote` and type the code).
-3. Click **Present Fullscreen** on the laptop. The phone shows the current and next slide, notes, Prev / Next, a jump list and Black screen. The laptop keyboard and clicker keep working; the phone follows along.
+3. The code panel hides itself as soon as the phone pairs, and it is never part of the fullscreen output, so it doesn't show on a mirrored projector.
+4. Click **Present Fullscreen**. The phone shows the current and next slide, notes, Prev / Next, a jump list and Black screen. The laptop keyboard and clicker keep working.
+5. **Disconnect / New code** ends the session for the phone and makes a fresh code. Only one phone can control at a time; a second phone is told someone else is in control.
 
-How it connects: the laptop opens three free public relays at once and the phone uses whichever works first:
+How it connects: the laptop listens on three free public relays at once and the phone uses whichever works first:
 direct WebRTC via the PeerJS cloud, Nostr public relays (port 443, works through most firewalls), and public MQTT brokers.
-Relay traffic is encrypted with a key derived from the pairing code, so nobody without the code can read it or send commands.
-These public relays are best-effort with no uptime guarantee; for production use Firebase/Supabase or a self-hosted relay.
+
+Security: the code itself is never sent. PBKDF2-SHA256 (310,000 iterations) + HKDF with separate labels derive an AES-GCM key and a separate channel id;
+the channel id names the PeerJS peer, the Nostr tag and the MQTT topics (never retained). Every message is encrypted and authenticated, and carries a
+sender id, a strictly increasing counter and a timestamp, so duplicates, replays and stale messages are dropped; commands must also name the laptop's
+current session. Public relays are best-effort with no uptime guarantee; for production use Firebase/Supabase or a self-hosted relay.
+
+## Publishing the bulletin for phones (no git or Node)
+
+Click **Publish** in Review / Edit. The bulletin is compressed and posted as a signed app-data event to free public Nostr relays, and the QR becomes a short link
+(`?session=ID&mode=bulletin&a=<publisher key>`) that any phone can open. Only the browser that published it holds the signing key, so nobody else can change it.
+If a hosted copy exists in `public/sessions/`, the QR uses that instead. **Share bulletin link** copies a self-contained compressed link (about 1.5–3.5 KB,
+too long for a QR) that works with no relay at all. Public relays don't promise how long they keep data; Export for hosting is still the most durable option.
 
 ## Fullscreen controls
 
