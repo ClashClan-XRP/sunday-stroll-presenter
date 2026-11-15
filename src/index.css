@@ -298,3 +298,11 @@ details summary { cursor: pointer; }
 .remote-next { opacity: 0.85; }
 .print-stage { border-radius: 0; box-shadow: none; }
 .print-slide { padding: 0 !important; display: block !important; aspect-ratio: auto !important; border: none !important; }
+
+.remote-bar.bad { background: #3b0d14; color: #ff8fa3; }
+.error-text { color: #ff8fa3; margin: 0.6rem 0; }
+.remote-bar-host { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; background: var(--card-bg); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 0.5rem 0.9rem; margin-bottom: 0.75rem; }
+.remote-bar-host .ok { color: var(--accent-green); }
+.pair-code { font-size: 1.6rem; letter-spacing: 0.12em; }
+/* Windowed presenter: keep the whole slide (and its corner QR) above the fold */
+.presenter-stage { width: min(100%, calc((100vh - 230px) * 16 / 9)); margin: 0 auto; }

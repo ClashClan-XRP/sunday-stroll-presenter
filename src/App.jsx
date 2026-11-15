@@ -5,8 +5,9 @@ import { loadArchive, savePresentation, getPresentation, deletePresentation, new
 import { generateDevotionals, detectTheme, DAYS, BOOKS, VERSIONS, formatRef, passageUrl, dayDate } from './lib/devotionals'
 import { downloadPptx, downloadDevotionals } from './lib/exporters'
 import { SlideStage } from './SlideStage'
+import { compress, decompress, publishOnline, fetchOnline } from './lib/publish'
 import { importSlides } from './lib/pptxImport'
-import { newPairCode, normalizeCode, startHost, startRemote, lightSlide } from './lib/remote'
+import { newPairCode, normalizeCode, formatCode, validCode, CODE_LEN, startHost, startRemote, lightSlide } from './lib/remote'
 
 // ---------- helpers ----------
 const htmlToText = html => {
@@ -18,7 +19,7 @@ const htmlToText = html => {
 const readUrl = () => {
   const q = new URLSearchParams(window.location.search)
   if (q.has('remote')) return { mode: 'remote', code: normalizeCode(q.get('remote')) }
-  return { session: q.get('session'), mode: q.get('mode') || (q.get('session') ? 'present' : 'home'), what: q.get('what'), day: q.get('day'), noprint: q.get('noprint') }
+  return { session: q.get('session'), mode: q.get('mode') || (q.get('session') ? 'present' : 'home'), what: q.get('what'), day: q.get('day'), noprint: q.get('noprint'), a: q.get('a'), h: window.location.hash }
 }
 
 const base = () => `${window.location.origin}${window.location.pathname}`
@@ -52,18 +53,27 @@ function App() {
     setRoute(readUrl())
   }, [])
   useEffect(() => {
+    // popstate (back/forward) and hashchange (a share link pasted into the same tab) both re-read the URL
     const onPop = () => setRoute(readUrl())
     window.addEventListener('popstate', onPop)
-    return () => window.removeEventListener('popstate', onPop)
+    window.addEventListener('hashchange', onPop)
+    return () => { window.removeEventListener('popstate', onPop); window.removeEventListener('hashchange', onPop) }
   }, [])
 
   const [ready, setReady] = useState(false)
-  useEffect(() => { seedFromServer().finally(() => setReady(true)) }, [])
-
+  // Seed the presenter archive from the hosted copies only on presenter pages. Bulletin / print / remote viewers
+  // never get the archive copied into their browser, so a congregant's home page shows no Edit/Delete.
   const { mode, session } = route
+  useEffect(() => {
+    const viewerPage = ['bulletin', 'devotionals', 'print', 'remote'].includes(mode)
+    if (viewerPage && !loadArchive().length) localStorage.setItem('ssp_viewer_v1', '1')
+    const seed = mode === 'edit' || mode === 'present' || (mode === 'home' && !localStorage.getItem('ssp_viewer_v1'))
+    if (seed && !ready) seedFromServer().finally(() => setReady(true)); else setReady(true)
+  }, [mode])
+
   if (!ready) return <div className="app"><main className="main"><p className="muted">Loading…</p></main></div>
-  if (mode === 'bulletin' || mode === 'devotionals') return <Bulletin id={session} nav={nav} />
-  if (mode === 'print') return <PrintView route={route} />
+  if (mode === 'bulletin' || mode === 'devotionals') return <Bulletin key={`${session}${route.h}${route.a}`} id={session} a={route.a} nav={nav} />
+  if (mode === 'print') return <PrintView key={`${session}${route.h}`} route={route} />
   if (mode === 'remote') return <RemoteControl code={route.code} />
   if (mode === 'edit') return <Editor id={session} nav={nav} />
   if (mode === 'present') return <Presenter id={session} nav={nav} />
@@ -79,6 +89,7 @@ function Home({ nav }) {
   const onUpload = async e => {
     const file = e.target.files[0]
     if (!file) return
+    localStorage.removeItem('ssp_viewer_v1') // this browser is a presenter now
     setBusy(true)
     try {
       const result = await parse(await file.arrayBuffer(), { imageMode: 'base64', videoMode: 'none', audioMode: 'none' })
@@ -165,6 +176,8 @@ function RefFields({ value, onChange, disabled, testid }) {
 function Editor({ id, nav }) {
   const [pres, setPres] = useState(() => getPresentation(id))
   const [saved, setSaved] = useState(true)
+  const [online, setOnline] = useState('')
+  const audience = useAudienceUrl(pres)
   if (!pres) return <NotFound nav={nav} />
   const locked = pres.status === 'published'
 
@@ -176,7 +189,16 @@ function Editor({ id, nav }) {
   const setDevo = (i, patch) => update({ devotionals: pres.devotionals.map((d, j) => (j === i ? { ...d, ...patch } : d)) })
   const setVersionAll = v => update({ version: v, devotionals: pres.devotionals.map(d => ({ ...d, ref: { ...d.ref, version: v } })) })
   const save = () => { setPres(savePresentation(pres)); setSaved(true) }
-  const publish = () => { setPres(savePresentation({ ...pres, sermonTitle: sermonTitleOf(pres), status: 'published', publishedAt: new Date().toISOString() })); setSaved(true) }
+  const publish = async () => {
+    const p = savePresentation({ ...pres, sermonTitle: sermonTitleOf(pres), status: 'published', publishedAt: new Date().toISOString() })
+    setPres(p); setSaved(true)
+    setOnline('Posting the bulletin online…')
+    try {
+      const r = await publishOnline(p)
+      if (r.ok) { setPres(savePresentation({ ...p, online: r })); setOnline(`Online copy posted to ${r.ok} of ${r.total} free relays.`) }
+      else setOnline('Could not reach the free relays. The QR works on this device; use "Share bulletin link" or try Publish again.')
+    } catch { setOnline('Could not post the online copy. Use "Share bulletin link" instead.') }
+  }
   const unpublish = () => { setPres(savePresentation({ ...pres, status: 'draft' })); setSaved(true) }
 
   return (
@@ -202,14 +224,16 @@ function Editor({ id, nav }) {
         {locked && (
           <div className="qr-section" data-testid="publish-qr">
             <h3>Published {new Date(pres.publishedAt).toLocaleString()}</h3>
-            <div style={{ marginTop: '1rem' }}><QRCodeSVG value={bulletinUrlFor(pres.id)} size={170} bgColor="#ffffff" fgColor="#0f0c29" includeMargin /></div>
+            <div style={{ marginTop: '1rem' }}><QRCodeSVG value={audience.url} size={170} bgColor="#ffffff" fgColor="#0f0c29" includeMargin data-testid="publish-qr-code" /></div>
             <p className="small">Scan for this week's bulletin and daily devotionals</p>
-            <p className="small muted">{bulletinUrlFor(pres.id)}</p>
+            <p className="small muted" data-testid="audience-url">{audience.url}</p>
             <div className="host-note" data-testid="host-note">
-              <b>Phones need a hosted copy.</b> This QR opens the bulletin on this browser right away. For other devices, click
-              {' '}<button className="btn btn-sm" data-testid="export-json" onClick={() => exportSessionJson(pres)}>Export for hosting</button>{' '}
-              and add the downloaded <code>{pres.id}.json</code> to <code>public/sessions/</code> (and its id to <code>public/sessions/index.json</code>), then redeploy.
-              Until then, use the bulletin's "Copy share link", which works on any device.
+              {audience.kind === 'hosted' && <p><b>Hosted copy found.</b> This QR works on every phone.</p>}
+              {audience.kind === 'online' && <p><b>Ready for phones.</b> The QR points to the online copy on free public relays, so any phone can open it. No git or upload needed.</p>}
+              {audience.kind === 'local' && <p><b>Not online yet.</b> This QR only works in this browser until the online copy posts. Click Publish again, or use the share link below.</p>}
+              <p data-testid="online-status">{online}</p>
+              <p><ShareButton pres={pres} /> works on any device without any relay (the link is long, so it's for texting or email, not a QR).</p>
+              <p className="small muted">For the most durable copy, you can also <button className="btn btn-sm" data-testid="export-json" onClick={() => exportSessionJson(pres)}>Export for hosting</button> and add <code>{pres.id}.json</code> to <code>public/sessions/</code>.</p>
             </div>
           </div>
         )}
@@ -270,7 +294,8 @@ function Presenter({ id, nav }) {
   const hostRef = useRef(null)
   const touch = useRef(null)
   const total = pres?.slides.length || 0
-  const bulletinUrl = bulletinUrlFor(id)
+  const audience = useAudienceUrl(pres)
+  const bulletinUrl = audience.url || bulletinUrlFor(id)
   const published = pres?.status === 'published'
   const stateRef = useRef({})
 
@@ -301,22 +326,35 @@ function Presenter({ id, nav }) {
     titles: pres?.slides.map(s => s.title) || []
   }
   useEffect(() => { hostRef.current?.broadcast(stateRef.current) }, [idx, black])
+  const launchHost = code => {
+    setRemote({ code, status: { peer: 'connecting', relay: 'connecting', mqtt: 'connecting', controller: null } })
+    hostRef.current = startHost(code, {
+      getState: () => stateRef.current,
+      onStatus: st => setRemote(r => (r && r.code === code ? { ...r, status: st } : r)),
+      onCommand: m => {
+        if (m.c === 'next') go(1)
+        else if (m.c === 'prev') go(-1)
+        else if (m.c === 'goto') goto(Number(m.slide) || 0)
+        else if (m.c === 'black') setBlack(v => (typeof m.on === 'boolean' ? m.on : !v))
+      }
+    })
+  }
   const startRemoteHost = () => {
     setRemoteOpen(true)
     if (hostRef.current) return
     let code = sessionStorage.getItem(`ssp_pair_${id}`)
-    if (!code) { code = newPairCode(); sessionStorage.setItem(`ssp_pair_${id}`, code) }
-    setRemote({ code, status: { peer: 'connecting', mqtt: 'connecting', phones: 0 } })
-    hostRef.current = startHost(code, {
-      getState: () => stateRef.current,
-      onStatus: st => setRemote(r => ({ ...r, status: st })),
-      onCommand: m => {
-        if (m.c === 'next') go(1)
-        else if (m.c === 'prev') go(-1)
-        else if (m.c === 'goto') goto(Number(m.n) || 0)
-        else if (m.c === 'black') setBlack(v => (typeof m.on === 'boolean' ? m.on : !v))
-      }
-    })
+    if (!code || !validCode(code)) { code = newPairCode(); sessionStorage.setItem(`ssp_pair_${id}`, code) }
+    launchHost(code)
+  }
+  // Disconnect / New code: tells phones the session ended, then pairs fresh with a new random code.
+  const rotateCode = () => {
+    hostRef.current?.stop(); hostRef.current = null
+    const code = newPairCode(); sessionStorage.setItem(`ssp_pair_${id}`, code)
+    setRemoteOpen(true); launchHost(code)
+  }
+  const stopRemote = () => {
+    hostRef.current?.stop(); hostRef.current = null
+    sessionStorage.removeItem(`ssp_pair_${id}`); setRemote(null); setRemoteOpen(false)
   }
   useEffect(() => () => hostRef.current?.stop(), [])
 
@@ -325,9 +363,9 @@ function Presenter({ id, nav }) {
   const exitFull = () => { if (document.fullscreenElement) document.exitFullscreen(); setFull(false) }
   const qr = published && idx === 0 ? bulletinUrl : null
   const remoteUrl = remote ? `${base()}?remote=${remote.code}` : ''
-  const relayPhone = remote?.status?.relayPhone && Date.now() - remote.status.relayPhone < 10 * 60 * 1000
-  const phoneConnected = remote?.status?.phones > 0 || relayPhone
-  const statusLine = remote ? `Direct WebRTC: ${remote.status.peer} • Nostr relay: ${remote.status.relay} • MQTT: ${remote.status.mqtt}${remote.status.phones ? ` • ${remote.status.phones} phone(s) direct` : relayPhone ? ' • phone via relay' : ''}` : ''
+  const paired = !!remote?.status?.controller
+  const phoneConnected = paired && Date.now() - (remote.status.lastSeen || 0) < 60 * 1000
+  const statusLine = remote ? `Direct WebRTC: ${remote.status.peer} • Nostr relay: ${remote.status.relay} • MQTT: ${remote.status.mqtt}${paired ? ` • phone via ${remote.status.controllerVia || '…'}` : ''}${remote.status.rejected ? ` • ${remote.status.rejected} rejected` : ''}` : ''
 
   // Fullscreen: tap/click left half = back, right half = next; swipe right = back, swipe left = next
   const onStageClick = e => { const r = e.currentTarget.getBoundingClientRect(); go(e.clientX - r.left < r.width / 2 ? -1 : 1) }
@@ -350,15 +388,23 @@ function Presenter({ id, nav }) {
       </Header>
       <main className="main">
         <h2 style={{ marginBottom: '1rem' }}>{pres.title} {!published && <span className="badge draft">Draft - publish to enable QR</span>}</h2>
-        {remoteOpen && remote && (
+        {remote && paired && (
+          <div className="remote-bar-host" data-testid="remote-paired">
+            <span className={phoneConnected ? 'ok' : ''} data-testid="host-status">{phoneConnected ? '● Phone remote connected' : '○ Phone remote paired, not heard from in a minute'} <span className="small muted">({statusLine})</span></span>
+            <button className="btn btn-secondary btn-sm" data-testid="rotate-code" onClick={rotateCode}>Disconnect / New code</button>
+            <button className="btn btn-secondary btn-sm" onClick={stopRemote}>Turn off remote</button>
+          </div>
+        )}
+        {remoteOpen && remote && !paired && (
           <div className="remote-panel" data-testid="remote-panel">
-            <div><QRCodeSVG value={remoteUrl} size={120} bgColor="#ffffff" fgColor="#0f0c29" includeMargin /></div>
+            <div><QRCodeSVG value={remoteUrl} size={132} bgColor="#ffffff" fgColor="#0f0c29" includeMargin /></div>
             <div>
               <h3>Phone remote</h3>
-              <p>Scan with the presenter's phone, or open <b>{base().replace(/^https?:\/\//, '')}?remote</b> and enter the code</p>
-              <div className="pair-code" data-testid="pair-code">{remote.code}</div>
-              <p className={`remote-status ${phoneConnected ? 'ok' : ''}`} data-testid="host-status">{phoneConnected ? '● Phone connected' : '○ Waiting for phone'} <span className="small muted">({statusLine})</span></p>
-              <button className="btn btn-secondary btn-sm" onClick={() => setRemoteOpen(false)}>Hide</button>
+              <p>Scan with the presenter's phone, or open <b>{base().replace(/^https?:\/\//, '')}?remote</b> and type the code. This panel hides itself once a phone pairs, and never appears in fullscreen.</p>
+              <div className="pair-code" data-testid="pair-code" data-code={remote.code}>{formatCode(remote.code)}</div>
+              <p className="remote-status" data-testid="host-status">○ Waiting for phone <span className="small muted">({statusLine})</span></p>
+              <button className="btn btn-secondary btn-sm" onClick={() => setRemoteOpen(false)}>Hide</button>{' '}
+              <button className="btn btn-secondary btn-sm" data-testid="rotate-code" onClick={rotateCode}>New code</button>
             </div>
           </div>
         )}
@@ -399,67 +445,119 @@ function Presenter({ id, nav }) {
 
 // ---------- Phone remote (?remote=CODE) ----------
 function RemoteControl({ code: initial }) {
-  const [code, setCode] = useState(initial || '')
+  const [code, setCode] = useState(initial && validCode(initial) ? initial : '')
   const [entered, setEntered] = useState(initial || '')
   const [state, setState] = useState(null)
-  const [status, setStatus] = useState({ state: 'idle' })
+  const [status, setStatus] = useState({ state: 'deriving' })
   const ref = useRef(null)
   useEffect(() => {
     if (!code) return
+    setState(null)
     ref.current = startRemote(code, { onState: setState, onStatus: setStatus })
     return () => ref.current?.stop()
   }, [code])
   const send = c => ref.current?.send(c)
   if (!code) {
+    const ok = validCode(entered)
     return (
       <div className="app remote-app"><main className="main">
         <h2>Sunday Stroll remote</h2>
-        <p className="muted">Enter the code shown on the presenter laptop.</p>
-        <input data-testid="code-input" value={entered} onChange={e => setEntered(normalizeCode(e.target.value))} placeholder="PAIRCODE" style={{ fontSize: '1.5rem', letterSpacing: '0.2em', textAlign: 'center' }} />
-        <button className="btn" style={{ marginTop: '1rem', width: '100%' }} onClick={() => { window.history.replaceState({}, '', `?remote=${entered}`); setCode(entered) }}>Connect</button>
+        <p className="muted">Type the {CODE_LEN}-character code shown on the presenter laptop (dashes optional).</p>
+        <input data-testid="code-input" value={formatCode(entered)} onChange={e => setEntered(normalizeCode(e.target.value).slice(0, CODE_LEN))} placeholder="XXXXXX-XXXXXX-XXXXXX" autoCapitalize="characters" autoComplete="off" style={{ fontSize: '1.2rem', letterSpacing: '0.1em', textAlign: 'center' }} />
+        {initial && !validCode(initial) && <p className="error-text" data-testid="code-error">That code isn't complete or valid. Codes are {CODE_LEN} characters.</p>}
+        <button className="btn" disabled={!ok} style={{ marginTop: '1rem', width: '100%' }} onClick={() => { window.history.replaceState({}, '', `?remote=${entered}`); setCode(entered) }}>Connect</button>
       </main></div>
     )
   }
+  const LABEL = { deriving: 'Securing connection…', connecting: 'Connecting…', waiting: 'Looking for the laptop…', connected: 'Connected', notfound: 'Presenter not found', busy: 'Another phone is in control', ended: 'Remote session ended' }
   const ok = status.state === 'connected'
+  const bad = ['notfound', 'busy', 'ended'].includes(status.state)
   return (
     <div className="app remote-app">
-      <div className={`remote-bar ${ok ? 'ok' : ''}`} data-testid="remote-status">{ok ? '● Connected' : `○ ${status.state}`}{status.via ? ` • ${status.via}` : ''} • {code}</div>
+      <div className={`remote-bar ${ok ? 'ok' : bad ? 'bad' : ''}`} data-testid="remote-status" data-state={status.state}>{ok ? '● ' : '○ '}{LABEL[status.state] || status.state}{ok && status.via ? ` • ${status.via}` : ''}</div>
       <main className="main">
-        {state ? <>
-          <div className="remote-title">{state.sermonTitle || state.title}</div>
+        {status.detail && <p className={bad ? 'error-text' : 'muted'} data-testid="remote-detail">{status.detail}</p>}
+        {status.state === 'ended' || status.state === 'busy'
+          ? <button className="btn" onClick={() => { window.history.replaceState({}, '', '?remote'); setCode(''); setEntered('') }}>Enter a new code</button>
+          : state ? <>
+          <div className="remote-title" data-testid="remote-title">{state.sermonTitle || state.title}</div>
           <div className="remote-label">Now: <b data-testid="remote-counter">{state.idx + 1} / {state.total}</b>{state.black && <span className="badge draft">BLACK</span>}</div>
-          <SlideStage slide={state.cur} className="remote-cur" testid="remote-cur" />
+          <SlideStage slide={state.cur} sermonTitle={state.idx === 0 ? state.sermonTitle : null} className="remote-cur" testid="remote-cur" />
           <div className="remote-buttons">
-            <button className="btn btn-secondary big" data-testid="r-prev" onClick={() => send({ c: 'prev' })} disabled={state.idx === 0}>‹ Prev</button>
-            <button className="btn big" data-testid="r-next" onClick={() => send({ c: 'next' })} disabled={state.idx >= state.total - 1}>Next ›</button>
+            <button className="btn btn-secondary big" data-testid="r-prev" onClick={() => send({ c: 'prev' })} disabled={!ok || state.idx === 0}>‹ Prev</button>
+            <button className="btn big" data-testid="r-next" onClick={() => send({ c: 'next' })} disabled={!ok || state.idx >= state.total - 1}>Next ›</button>
           </div>
           <div className="remote-row">
-            <button className="btn btn-secondary btn-sm" data-testid="r-black" onClick={() => send({ c: 'black' })}>{state.black ? 'Show slides' : 'Black screen'}</button>
-            <select data-testid="r-goto" value={state.idx} onChange={e => send({ c: 'goto', n: Number(e.target.value) })}>
+            <button className="btn btn-secondary btn-sm" data-testid="r-black" disabled={!ok} onClick={() => send({ c: 'black' })}>{state.black ? 'Show slides' : 'Black screen'}</button>
+            <select data-testid="r-goto" value={state.idx} disabled={!ok} onChange={e => send({ c: 'goto', slide: Number(e.target.value) })}>
               {state.titles.map((t, i) => <option key={i} value={i}>{i + 1}. {t}</option>)}
             </select>
           </div>
           {state.notes && <div className="notes"><b>Notes:</b> {state.notes}</div>}
           <div className="remote-label">Next:</div>
           {state.next ? <SlideStage slide={state.next} className="remote-next" /> : <p className="muted">End of presentation</p>}
-        </> : <p className="muted">Waiting for the presenter laptop… Make sure the presenter page is open and its Remote panel is showing this code.</p>}
+        </> : !bad && <p className="muted">Waiting for the presenter laptop… Make sure the presenter page is open with its Remote panel showing this code.</p>}
+        <p className="small muted" style={{ marginTop: '1.5rem' }}>Code {formatCode(code)}</p>
       </main>
     </div>
   )
 }
 
 // ---------- Client bulletin: sermon outline + devotionals all week; print/download day or week ----------
-function useSession(id) {
-  const hash = new URLSearchParams(window.location.hash.slice(1)).get('d')
-  const local = (hash && decodePortable(hash)) || getPresentation(id)
-  const [pres, setPres] = useState(local)
-  const [loading, setLoading] = useState(!local)
-  useEffect(() => { if (!local && id) fetchServerSession(id).then(p => { setPres(p); setLoading(false) }); else setLoading(false) }, [id])
+// Where a viewer's bulletin comes from, in order: share link in the hash (#z= compressed, #d= legacy),
+// this browser's archive, the hosted copy (public/sessions), then the online copy on public relays (&a=publisher).
+function useSession(id, a) {
+  const hp = new URLSearchParams(window.location.hash.slice(1))
+  const z = hp.get('z'), legacy = hp.get('d')
+  const hash = z || legacy
+  const immediate = (legacy && decodePortable(legacy)) || (!z && getPresentation(id)) || null
+  const [pres, setPres] = useState(immediate)
+  const [loading, setLoading] = useState(!immediate)
+  useEffect(() => {
+    if (immediate) return
+    let live = true
+    ;(async () => {
+      let p = z ? await decompress(z) : null
+      if (p) p = { ...p, id }
+      if (!p && z) p = getPresentation(id)
+      if (!p && id) p = await fetchServerSession(id)
+      if (!p && id && a) p = await fetchOnline(id, a)
+      if (live) { setPres(p); setLoading(false) }
+    })()
+    return () => { live = false }
+  }, [id, a, hash])
   return { pres, loading, hash }
 }
 
-function Bulletin({ id, nav }) {
-  const { pres, loading, hash } = useSession(id)
+// The link the audience QR should carry: the hosted copy if it exists, else the online (relay) copy, else local only.
+function useAudienceUrl(pres) {
+  const [hosted, setHosted] = useState(null)
+  useEffect(() => { if (pres?.id) fetchServerSession(pres.id).then(p => setHosted(!!p)) }, [pres?.id])
+  if (!pres) return { url: '', kind: 'none' }
+  if (hosted) return { url: bulletinUrlFor(pres.id), kind: 'hosted' }
+  if (pres.online?.a) return { url: `${bulletinUrlFor(pres.id)}&a=${pres.online.a}`, kind: 'online' }
+  return { url: bulletinUrlFor(pres.id), kind: hosted === null ? 'checking' : 'local' }
+}
+
+async function shareLinkFor(pres) {
+  return `${bulletinUrlFor(pres.id)}#z=${await compress(pres)}`
+}
+
+function ShareButton({ pres, testid = 'share-bulletin', label = 'Share bulletin link' }) {
+  const [msg, setMsg] = useState('')
+  const go = async () => {
+    const url = await shareLinkFor(pres)
+    window.__lastShareLink = url
+    try {
+      if (navigator.share && /Mobi|Android|iPhone/i.test(navigator.userAgent)) { await navigator.share({ title: sermonTitleOf(pres), url }); setMsg('Shared.'); return }
+      await navigator.clipboard.writeText(url); setMsg(`Link copied (${url.length.toLocaleString()} characters). Paste it in a text, email or the church group chat.`)
+    } catch { setMsg('Copy failed. Long-press to copy:'); }
+  }
+  return <span><button className="btn btn-secondary btn-sm" data-testid={testid} onClick={go}>{label}</button> <span className="small muted" data-testid={`${testid}-msg`}>{msg}</span></span>
+}
+
+function Bulletin({ id, a, nav }) {
+  const { pres, loading, hash } = useSession(id, a)
   if (loading) return <div className="app"><main className="main"><p className="muted">Loading bulletin…</p></main></div>
   if (!pres) return <ViewerMessage msg="This bulletin isn't available on this device yet. Ask the presenter for the share link." />
   if (!hash && pres.status !== 'published') return <ViewerMessage msg="This bulletin hasn't been published yet." />
@@ -470,15 +568,14 @@ function Bulletin({ id, nav }) {
     return diff >= 0 && diff < 7 ? diff : -1
   })()
   const today = DAYS[todayIdx]
-  const portable = `${bulletinUrlFor(id)}#d=${encodePortable(pres)}`
-  const printUrl = (what, day) => `${base()}?session=${id}&mode=print&what=${what}${day !== undefined ? `&day=${day}` : ''}${hash ? `#d=${hash}` : ''}`
+  const printUrl = (what, day) => `${base()}?session=${id}&mode=print&what=${what}${day !== undefined ? `&day=${day}` : ''}${a ? `&a=${a}` : ''}${window.location.hash || ''}`
   return (
     <div className="app">
       <Header nav={nav} viewer>
         <button className="btn btn-secondary" data-testid="print-week" onClick={() => window.open(printUrl('week'), '_blank')}>Print / PDF week</button>
         <button className="btn btn-secondary" data-testid="dl-week" onClick={() => downloadDevotionals(pres, pres.devotionals, 'html', 'week')}>Download week</button>
         <button className="btn btn-secondary" data-testid="dl-week-txt" onClick={() => downloadDevotionals(pres, pres.devotionals, 'txt', 'week')}>Save week (.txt)</button>
-        <button className="btn btn-secondary" data-testid="copy-portable" onClick={() => navigator.clipboard?.writeText(portable)}>Copy share link</button>
+        <ShareButton pres={{ ...pres, id }} testid="copy-portable" label="Copy share link" />
       </Header>
       <main className="main devotional-page bulletin">
         <div className="bulletin-head">
@@ -514,7 +611,8 @@ function Bulletin({ id, nav }) {
 
 // ---------- Print view (browser print-to-PDF) ----------
 function PrintView({ route }) {
-  const { pres, loading } = useSession(route.session)
+  const { pres, loading } = useSession(route.session, route.a)
+  const audience = useAudienceUrl(pres ? { ...pres, id: route.session } : null)
   useEffect(() => { if (pres && !route.noprint) setTimeout(() => window.print(), 400) }, [pres])
   if (loading) return <p style={{ padding: '2rem' }}>Loading…</p>
   if (!pres) return <p style={{ padding: '2rem' }}>Nothing to print.</p>
@@ -523,7 +621,7 @@ function PrintView({ route }) {
       <div className="print-root">
         {pres.slides.map((s, i) => (
           <div className="print-slide" key={s.id}>
-            <SlideStage slide={s} qr={i === 0 && pres.status === 'published' ? bulletinUrlFor(pres.id) : null} sermonTitle={i === 0 ? sermonTitleOf(pres) : null} className="print-stage" />
+            <SlideStage slide={s} qr={i === 0 && pres.status === 'published' ? audience.url : null} sermonTitle={i === 0 ? sermonTitleOf(pres) : null} className="print-stage" />
             <div className="ps-foot">{pres.title} • {i + 1}/{pres.slides.length}</div>
           </div>
         ))}
