@@ -42,10 +42,11 @@ const bgStyle = bg => {
 
 const overlaps = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 
-// Small QR badge: ~14% of slide height, in a corner that doesn't cover any text box.
+// QR badge: code is 15% of slide height (badge ~20% with quiet zone and caption), in a corner that doesn't cover any text box.
 function QrBadge({ url, layout, elements }) {
-  const size = layout.h * 0.105, cap = layout.h * 0.026, m = layout.h * 0.025
-  const bw = size * 1.22, bh = size + cap + 10
+  const size = layout.h * 0.15, cap = layout.h * 0.024, m = layout.h * 0.022
+  const pad = size * 0.07 // white quiet zone around the code (~2 modules) so cameras lock on
+  const bw = size + pad * 2, bh = size + pad * 2 + cap * 1.2
   const corners = [
     { x: layout.w - bw - m, y: layout.h - bh - m }, { x: m, y: layout.h - bh - m },
     { x: layout.w - bw - m, y: m }, { x: m, y: m }
@@ -53,8 +54,8 @@ function QrBadge({ url, layout, elements }) {
   const texts = (elements || []).filter(e => e.kind !== 'image' && e.html)
   const pos = corners.find(c => !texts.some(t => overlaps({ ...c, w: bw, h: bh }, t))) || corners[0]
   return (
-    <div className="qr-badge" data-testid="title-qr" style={{ left: `${pos.x}pt`, top: `${pos.y}pt`, width: `${bw}pt`, height: `${bh}pt`, fontSize: `${cap * 0.5}pt` }}>
-      <QRCodeSVG value={url} size={256} style={{ width: `${size}pt`, height: `${size}pt`, display: 'block', margin: '0 auto' }} bgColor="#ffffff" fgColor="#0f0c29" />
+    <div className="qr-badge" data-testid="title-qr" style={{ left: `${pos.x}pt`, top: `${pos.y}pt`, width: `${bw}pt`, height: `${bh}pt`, fontSize: `${cap * 0.55}pt`, padding: `${pad}pt ${pad}pt 0` }}>
+      <QRCodeSVG value={url} size={256} level="L" style={{ width: `${size}pt`, height: `${size}pt`, display: 'block', margin: '0 auto' }} bgColor="#ffffff" fgColor="#000000" />
       <div>Scan for bulletin</div>
     </div>
   )
@@ -83,7 +84,7 @@ export function SlideStage({ slide, qr, sermonTitle, className = '', style, test
                 </AutoFit>
           ))
           : (
-            <AutoFit className="stage-text" deps={[slide.id, slide.title, slide.body, sermonTitle, !!qr]} style={qr ? { bottom: `${layout.h * 0.2}pt` } : null}>
+            <AutoFit className="stage-text" deps={[slide.id, slide.title, slide.body, sermonTitle, !!qr]} style={qr ? { bottom: `${layout.h * 0.24}pt` } : null}>
               {sermonTitle ? <>
                 <div className="slide-title" data-testid="slide-main-title">{sermonTitle}</div>
                 <div className="slide-subtitle">{slide.title}</div>

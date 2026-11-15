@@ -67,15 +67,25 @@ direct WebRTC via the PeerJS cloud, Nostr public relays (port 443, works through
 
 Security: the code itself is never sent. PBKDF2-SHA256 (310,000 iterations) + HKDF with separate labels derive an AES-GCM key and a separate channel id;
 the channel id names the PeerJS peer, the Nostr tag and the MQTT topics (never retained). Every message is encrypted and authenticated, and carries a
-sender id, a strictly increasing counter and a timestamp, so duplicates, replays and stale messages are dropped; commands must also name the laptop's
-current session. Public relays are best-effort with no uptime guarantee; for production use Firebase/Supabase or a self-hosted relay.
+sender id, a strictly increasing counter tied to its timestamp (they may differ by at most 5 s) and a timestamp, so duplicates, replays and stale messages are dropped.
+
+Per-phone key: when a phone pairs it sends a fresh ECDH P-256 public key; the laptop answers with its own ephemeral key and both derive a per-phone
+AES-GCM command key (HKDF, bound to the laptop session and the phone's id). Slide commands are sealed with that key, so someone else who knows the
+pairing code cannot move slides or take control by copying the phone's id. If the laptop stops confirming the phone's taps (for about 9 s) the phone shows
+**Connection lost, re-pair** with a **Re-pair** button; if the laptop restarted, the phone re-pairs by itself. Public relays are best-effort with no uptime
+guarantee; for production use Firebase/Supabase or a self-hosted relay.
 
 ## Publishing the bulletin for phones (no git or Node)
 
-Click **Publish** in Review / Edit. The bulletin is compressed and posted as a signed app-data event to free public Nostr relays, and the QR becomes a short link
-(`?session=ID&mode=bulletin&a=<publisher key>`) that any phone can open. Only the browser that published it holds the signing key, so nobody else can change it.
-If a hosted copy exists in `public/sessions/`, the QR uses that instead. **Share bulletin link** copies a self-contained compressed link (about 1.5–3.5 KB,
-too long for a QR) that works with no relay at all. Public relays don't promise how long they keep data; Export for hosting is still the most durable option.
+Click **Publish** in Review / Edit. The bulletin is compressed and posted as a signed app-data event to six free public Nostr relays, and the QR becomes a short
+link (`?b=ID.FP`, where FP is a short fingerprint of the publisher key) that any phone can open. Only the browser that published it holds the signing key, so nobody
+else can change it. If a hosted copy exists in `public/sessions/`, the QR uses `?b=ID` instead.
+
+- The editor shows how many relays hold the bulletin (**Check now** re-counts). While the publishing browser is open it re-checks every 20 minutes and re-posts to relays that dropped it.
+- An online QR is good for about a week; relays don't promise longer. For anything longer use **Export for hosting**.
+- On the phone, the bulletin retries across all relays for up to about 25 s with a progress message; if it still fails it says why (removed, relays unreachable, or not found) and offers **Try again**.
+- **Remove online copy** (and deleting the presentation on Home) sends a NIP-09 deletion plus an empty replacement, so phones then see "The presenter removed this bulletin".
+- **Share bulletin link** copies a self-contained compressed link (about 1.5–3.5 KB, too long for a QR) that works with no relay at all.
 
 ## Fullscreen controls
 

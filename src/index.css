@@ -271,7 +271,7 @@ details summary { cursor: pointer; }
 .stage-text > div { display: flex; flex-direction: column; justify-content: center; min-height: 100%; }
 .stage-text .slide-title { font-size: 1.45em; }
 .stage-text .slide-body { white-space: pre-line; }
-.qr-badge { position: absolute; background: #fff; color: #0f0c29; border-radius: 6pt; padding: 4pt 4pt 2pt; text-align: center; line-height: 1.1; box-shadow: 0 2pt 8pt rgba(0,0,0,0.35); z-index: 2; }
+.qr-badge { position: absolute; box-sizing: border-box; background: #fff; color: #0f0c29; border-radius: 6pt; padding: 4pt 4pt 2pt; text-align: center; line-height: 1.1; box-shadow: 0 2pt 8pt rgba(0,0,0,0.35); z-index: 2; }
 .qr-badge div { white-space: nowrap; margin-top: 2pt; font-weight: 600; }
 .fullscreen-overlay { cursor: pointer; user-select: none; touch-action: pan-y; }
 .fs-stage { position: fixed; inset: 0; width: 100vw; height: 100vh; border-radius: 0; box-shadow: none; }
@@ -306,3 +306,5 @@ details summary { cursor: pointer; }
 .pair-code { font-size: 1.6rem; letter-spacing: 0.12em; }
 /* Windowed presenter: keep the whole slide (and its corner QR) above the fold */
 .presenter-stage { width: min(100%, calc((100vh - 230px) * 16 / 9)); margin: 0 auto; }
+
+.warn-text { color: #ffd166; }

@@ -5,7 +5,7 @@ import { loadArchive, savePresentation, getPresentation, deletePresentation, new
 import { generateDevotionals, detectTheme, DAYS, BOOKS, VERSIONS, formatRef, passageUrl, dayDate } from './lib/devotionals'
 import { downloadPptx, downloadDevotionals } from './lib/exporters'
 import { SlideStage } from './SlideStage'
-import { compress, decompress, publishOnline, fetchOnline } from './lib/publish'
+import { compress, decompress, publishOnline, fetchOnline, keepAlive, deleteOnline, onlineStatus, KEEP_DAYS } from './lib/publish'
 import { importSlides } from './lib/pptxImport'
 import { newPairCode, normalizeCode, formatCode, validCode, CODE_LEN, startHost, startRemote, lightSlide } from './lib/remote'
 
@@ -19,12 +19,14 @@ const htmlToText = html => {
 const readUrl = () => {
   const q = new URLSearchParams(window.location.search)
   if (q.has('remote')) return { mode: 'remote', code: normalizeCode(q.get('remote')) }
-  return { session: q.get('session'), mode: q.get('mode') || (q.get('session') ? 'present' : 'home'), what: q.get('what'), day: q.get('day'), noprint: q.get('noprint'), a: q.get('a'), h: window.location.hash }
+  if (q.get('b')) { const [id, f] = q.get('b').split('.'); return { mode: 'bulletin', session: id, f: f || null, a: null, h: window.location.hash } }
+  return { session: q.get('session'), mode: q.get('mode') || (q.get('session') ? 'present' : 'home'), what: q.get('what'), day: q.get('day'), noprint: q.get('noprint'), a: q.get('a'), f: q.get('f'), h: window.location.hash }
 }
 
 const base = () => `${window.location.origin}${window.location.pathname}`
 // The audience QR opens the all-week bulletin. (Live slide sync is deferred - see README.)
-export const bulletinUrlFor = id => `${base()}?session=${id}&mode=bulletin`
+// Short audience links keep the QR small: ?b=ID (hosted) or ?b=ID.FINGERPRINT (online copy). Old ?session=…&mode=bulletin links still work.
+export const bulletinUrlFor = (id, f) => `${base()}?b=${id}${f ? `.${f}` : ''}`
 const nextSunday = () => { const d = new Date(); d.setDate(d.getDate() + ((7 - d.getDay()) % 7)); return d.toISOString().slice(0, 10) }
 
 function Header({ children, nav, viewer }) {
@@ -61,6 +63,13 @@ function App() {
   }, [])
 
   const [ready, setReady] = useState(false)
+  // Keep-alive for bulletins published from this browser: re-post to the relays every 20 minutes while it's open.
+  useEffect(() => {
+    if (['bulletin', 'devotionals', 'print', 'remote'].includes(route.mode)) return
+    const run = () => keepAlive().catch(() => {})
+    const t = setTimeout(run, 4000), iv = setInterval(run, 20 * 60 * 1000)
+    return () => { clearTimeout(t); clearInterval(iv) }
+  }, [route.mode])
   // Seed the presenter archive from the hosted copies only on presenter pages. Bulletin / print / remote viewers
   // never get the archive copied into their browser, so a congregant's home page shows no Edit/Delete.
   const { mode, session } = route
@@ -72,7 +81,7 @@ function App() {
   }, [mode])
 
   if (!ready) return <div className="app"><main className="main"><p className="muted">Loading…</p></main></div>
-  if (mode === 'bulletin' || mode === 'devotionals') return <Bulletin key={`${session}${route.h}${route.a}`} id={session} a={route.a} nav={nav} />
+  if (mode === 'bulletin' || mode === 'devotionals') return <Bulletin key={`${session}${route.h}${route.a}${route.f}`} id={session} who={{ a: route.a, f: route.f }} nav={nav} />
   if (mode === 'print') return <PrintView key={`${session}${route.h}`} route={route} />
   if (mode === 'remote') return <RemoteControl code={route.code} />
   if (mode === 'edit') return <Editor id={session} nav={nav} />
@@ -106,7 +115,12 @@ function Home({ nav }) {
     } finally { setBusy(false) }
   }
 
-  const remove = id => { if (confirm('Delete this presentation from the archive?')) { deletePresentation(id); setArchive(loadArchive()) } }
+  const remove = id => {
+    const p = getPresentation(id)
+    if (!confirm(p?.online ? 'Delete this presentation and remove its online bulletin? Phones will no longer open its QR.' : 'Delete this presentation from the archive?')) return
+    if (p?.online) deleteOnline(id).catch(() => {})
+    deletePresentation(id); setArchive(loadArchive())
+  }
 
   return (
     <div className="app">
@@ -195,11 +209,24 @@ function Editor({ id, nav }) {
     setOnline('Posting the bulletin online…')
     try {
       const r = await publishOnline(p)
-      if (r.ok) { setPres(savePresentation({ ...p, online: r })); setOnline(`Online copy posted to ${r.ok} of ${r.total} free relays.`) }
+      if (r.ok) { setPres(savePresentation({ ...p, online: r })); setOnline('') }
       else setOnline('Could not reach the free relays. The QR works on this device; use "Share bulletin link" or try Publish again.')
     } catch { setOnline('Could not post the online copy. Use "Share bulletin link" instead.') }
   }
   const unpublish = () => { setPres(savePresentation({ ...pres, status: 'draft' })); setSaved(true) }
+  const removeOnline = async () => {
+    if (!confirm('Remove the online bulletin? Phones that scan its QR will be told it was removed.')) return
+    setOnline('Removing the online copy…')
+    const r = await deleteOnline(pres.id)
+    if (r.error) { setOnline(r.error); return }
+    const { online: _gone, ...rest } = pres
+    setPres(savePresentation({ ...rest, status: 'draft' })); setSaved(true)
+    setOnline(`Removed: deletion sent to ${r.ok} of ${r.total} relays. Publish again to post a new copy.`)
+  }
+  const [held, setHeld] = useState(() => onlineStatus(id))
+  useEffect(() => { const on = e => { if (e.detail === id) setHeld(onlineStatus(id)) }; window.addEventListener('ssp-online', on); return () => window.removeEventListener('ssp-online', on) }, [id])
+  const [checking, setChecking] = useState(false)
+  const checkNow = async () => { setChecking(true); try { await keepAlive(pres.id) } finally { setChecking(false); setHeld(onlineStatus(pres.id)) } }
 
   return (
     <div className="app">
@@ -221,6 +248,7 @@ function Editor({ id, nav }) {
           <span className={`badge ${pres.status}`}>{locked ? 'Published' : 'Draft'}</span>
         </div>
 
+        {!locked && online && <p className="host-note" data-testid="online-status">{online}</p>}
         {locked && (
           <div className="qr-section" data-testid="publish-qr">
             <h3>Published {new Date(pres.publishedAt).toLocaleString()}</h3>
@@ -229,7 +257,13 @@ function Editor({ id, nav }) {
             <p className="small muted" data-testid="audience-url">{audience.url}</p>
             <div className="host-note" data-testid="host-note">
               {audience.kind === 'hosted' && <p><b>Hosted copy found.</b> This QR works on every phone.</p>}
-              {audience.kind === 'online' && <p><b>Ready for phones.</b> The QR points to the online copy on free public relays, so any phone can open it. No git or upload needed.</p>}
+              {audience.kind === 'online' && <>
+                <p><b>Ready for phones.</b> The QR points to the online copy on free public relays, so any phone can open it. No git or upload needed.</p>
+                <p data-testid="relay-holders"><b>{held ? `Held by ${held.held} of ${held.total} relays` : 'Relay check pending'}</b>{held?.checkedAt ? ` (checked ${new Date(held.checkedAt).toLocaleTimeString()})` : ''}. While this browser is open it re-posts the bulletin every 20 minutes.
+                  {' '}<button className="btn btn-secondary btn-sm" data-testid="check-relays" disabled={checking} onClick={checkNow}>{checking ? 'Checking…' : 'Check now'}</button></p>
+                <p className="warn-text" data-testid="week-note">This QR is good for about a week. Free relays don't promise to keep data, so after ~{KEEP_DAYS - 1} days (or if this browser's data is cleared) it may stop opening. For a lasting copy, use Export for hosting below.</p>
+                <p><button className="btn btn-secondary btn-sm" data-testid="remove-online" onClick={removeOnline}>Unpublish and remove online copy</button></p>
+              </>}
               {audience.kind === 'local' && <p><b>Not online yet.</b> This QR only works in this browser until the online copy posts. Click Publish again, or use the share link below.</p>}
               <p data-testid="online-status">{online}</p>
               <p><ShareButton pres={pres} /> works on any device without any relay (the link is long, so it's for texting or email, not a QR).</p>
@@ -469,15 +503,17 @@ function RemoteControl({ code: initial }) {
       </main></div>
     )
   }
-  const LABEL = { deriving: 'Securing connection…', connecting: 'Connecting…', waiting: 'Looking for the laptop…', connected: 'Connected', notfound: 'Presenter not found', busy: 'Another phone is in control', ended: 'Remote session ended' }
+  const LABEL = { deriving: 'Securing connection…', connecting: 'Connecting…', waiting: 'Pairing with the laptop…', connected: 'Connected', notfound: 'Presenter not found', busy: 'Another phone is in control', ended: 'Remote session ended', lost: 'Connection lost, re-pair' }
   const ok = status.state === 'connected'
-  const bad = ['notfound', 'busy', 'ended'].includes(status.state)
+  const bad = ['notfound', 'busy', 'ended', 'lost'].includes(status.state)
   return (
     <div className="app remote-app">
       <div className={`remote-bar ${ok ? 'ok' : bad ? 'bad' : ''}`} data-testid="remote-status" data-state={status.state}>{ok ? '● ' : '○ '}{LABEL[status.state] || status.state}{ok && status.via ? ` • ${status.via}` : ''}</div>
       <main className="main">
         {status.detail && <p className={bad ? 'error-text' : 'muted'} data-testid="remote-detail">{status.detail}</p>}
-        {status.state === 'ended' || status.state === 'busy'
+        {status.state === 'lost'
+          ? <button className="btn" data-testid="r-repair" onClick={() => { ref.current?.repair(); window.location.reload() }}>Re-pair</button>
+          : status.state === 'ended' || status.state === 'busy'
           ? <button className="btn" onClick={() => { window.history.replaceState({}, '', '?remote'); setCode(''); setEntered('') }}>Enter a new code</button>
           : state ? <>
           <div className="remote-title" data-testid="remote-title">{state.sermonTitle || state.title}</div>
@@ -505,28 +541,51 @@ function RemoteControl({ code: initial }) {
 
 // ---------- Client bulletin: sermon outline + devotionals all week; print/download day or week ----------
 // Where a viewer's bulletin comes from, in order: share link in the hash (#z= compressed, #d= legacy),
-// this browser's archive, the hosted copy (public/sessions), then the online copy on public relays (&a=publisher).
-function useSession(id, a) {
+// this browser's archive, the hosted copy (public/sessions), then the online copy on public relays (?b=ID.FP or &a=key).
+function useSession(id, who = {}) {
   const hp = new URLSearchParams(window.location.hash.slice(1))
   const z = hp.get('z'), legacy = hp.get('d')
   const hash = z || legacy
   const immediate = (legacy && decodePortable(legacy)) || (!z && getPresentation(id)) || null
   const [pres, setPres] = useState(immediate)
   const [loading, setLoading] = useState(!immediate)
+  const [progress, setProgress] = useState(null)
+  const [failure, setFailure] = useState(null)
+  const [tries, setTries] = useState(0)
   useEffect(() => {
     if (immediate) return
     let live = true
+    setLoading(true); setFailure(null)
     ;(async () => {
       let p = z ? await decompress(z) : null
       if (p) p = { ...p, id }
       if (!p && z) p = getPresentation(id)
       if (!p && id) p = await fetchServerSession(id)
-      if (!p && id && a) p = await fetchOnline(id, a)
-      if (live) { setPres(p); setLoading(false) }
+      let fail = null
+      if (!p && id && (who.a || who.f)) {
+        const r = await fetchOnline(id, who, pr => live && setProgress(pr))
+        p = r.pres; fail = r.pres ? null : r
+      }
+      if (live) { setPres(p); setFailure(p ? null : (fail || { reason: 'none' })); setLoading(false) }
     })()
     return () => { live = false }
-  }, [id, a, hash])
-  return { pres, loading, hash }
+  }, [id, who.a, who.f, hash, tries])
+  return { pres, loading, hash, progress, failure, retry: () => setTries(t => t + 1) }
+}
+
+const FAIL_TEXT = {
+  unreachable: r => `Couldn't reach any of the ${r.total} free relays that hold online bulletins. Check this phone's internet connection (some church or guest Wi-Fi blocks them; try mobile data).`,
+  missing: r => `${r.reached} of ${r.total} relays answered, but none has this bulletin. It may be more than a week old, or the relays dropped it. Ask the presenter to open Sunday Stroll and publish it again, or to send the share link.`,
+  deleted: () => 'The presenter removed this bulletin.',
+  none: () => "This bulletin isn't available on this device yet. Ask the presenter for the share link."
+}
+function BulletinFailure({ failure, retry }) {
+  return (
+    <div className="app"><Header viewer nav={() => {}} /><main className="main">
+      <p data-testid="bulletin-fail" data-reason={failure.reason}>{(FAIL_TEXT[failure.reason] || FAIL_TEXT.none)(failure)}</p>
+      {failure.reason !== 'deleted' && failure.reason !== 'none' && <button className="btn" style={{ marginTop: '1rem' }} data-testid="bulletin-retry" onClick={retry}>Try again</button>}
+    </main></div>
+  )
 }
 
 // The link the audience QR should carry: the hosted copy if it exists, else the online (relay) copy, else local only.
@@ -535,7 +594,8 @@ function useAudienceUrl(pres) {
   useEffect(() => { if (pres?.id) fetchServerSession(pres.id).then(p => setHosted(!!p)) }, [pres?.id])
   if (!pres) return { url: '', kind: 'none' }
   if (hosted) return { url: bulletinUrlFor(pres.id), kind: 'hosted' }
-  if (pres.online?.a) return { url: `${bulletinUrlFor(pres.id)}&a=${pres.online.a}`, kind: 'online' }
+  if (pres.online?.f) return { url: bulletinUrlFor(pres.id, pres.online.f), kind: 'online' }
+  if (pres.online?.a) return { url: `${base()}?session=${pres.id}&mode=bulletin&a=${pres.online.a}`, kind: 'online' }
   return { url: bulletinUrlFor(pres.id), kind: hosted === null ? 'checking' : 'local' }
 }
 
@@ -556,10 +616,11 @@ function ShareButton({ pres, testid = 'share-bulletin', label = 'Share bulletin 
   return <span><button className="btn btn-secondary btn-sm" data-testid={testid} onClick={go}>{label}</button> <span className="small muted" data-testid={`${testid}-msg`}>{msg}</span></span>
 }
 
-function Bulletin({ id, a, nav }) {
-  const { pres, loading, hash } = useSession(id, a)
-  if (loading) return <div className="app"><main className="main"><p className="muted">Loading bulletin…</p></main></div>
-  if (!pres) return <ViewerMessage msg="This bulletin isn't available on this device yet. Ask the presenter for the share link." />
+function Bulletin({ id, who, nav }) {
+  const { pres, loading, hash, progress, failure, retry } = useSession(id, who)
+  const a = who?.a, f = who?.f
+  if (loading) return <div className="app"><main className="main"><p className="muted" data-testid="bulletin-loading">{progress ? `Looking for this week's bulletin on the free relays… (try ${progress.attempt} of ${progress.of})` : 'Loading bulletin…'}</p></main></div>
+  if (!pres) return <BulletinFailure failure={failure || { reason: 'none' }} retry={retry} />
   if (!hash && pres.status !== 'published') return <ViewerMessage msg="This bulletin hasn't been published yet." />
   // Highlight today only when today falls inside this bulletin's week (Mon-Sun after the sermon Sunday).
   const todayIdx = (() => {
@@ -568,7 +629,7 @@ function Bulletin({ id, a, nav }) {
     return diff >= 0 && diff < 7 ? diff : -1
   })()
   const today = DAYS[todayIdx]
-  const printUrl = (what, day) => `${base()}?session=${id}&mode=print&what=${what}${day !== undefined ? `&day=${day}` : ''}${a ? `&a=${a}` : ''}${window.location.hash || ''}`
+  const printUrl = (what, day) => `${base()}?session=${id}&mode=print&what=${what}${day !== undefined ? `&day=${day}` : ''}${a ? `&a=${a}` : ''}${f ? `&f=${f}` : ''}${window.location.hash || ''}`
   return (
     <div className="app">
       <Header nav={nav} viewer>
@@ -611,7 +672,7 @@ function Bulletin({ id, a, nav }) {
 
 // ---------- Print view (browser print-to-PDF) ----------
 function PrintView({ route }) {
-  const { pres, loading } = useSession(route.session, route.a)
+  const { pres, loading } = useSession(route.session, { a: route.a, f: route.f })
   const audience = useAudienceUrl(pres ? { ...pres, id: route.session } : null)
   useEffect(() => { if (pres && !route.noprint) setTimeout(() => window.print(), 400) }, [pres])
   if (loading) return <p style={{ padding: '2rem' }}>Loading…</p>
