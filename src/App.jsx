@@ -64,6 +64,22 @@ function Header({ children, nav, viewer }) {
 // Sermon title = the main heading for the title slide and bulletin (falls back to the title slide's subtitle).
 export const sermonTitleOf = pres => pres?.sermonTitle || (pres?.slides?.[0]?.body || '').split('\n').find(l => l.trim()) || pres?.theme || pres?.title || ''
 
+function useRevealChrome() {
+  const [on, setOn] = useState(false)
+  const timer = useRef(null)
+  const reveal = useCallback(() => {
+    setOn(true)
+    clearTimeout(timer.current)
+    timer.current = setTimeout(() => setOn(false), 3000)
+  }, [])
+  useEffect(() => () => clearTimeout(timer.current), [])
+  return [on, reveal]
+}
+const clockText = ms => {
+  const s = Math.max(0, Math.floor(ms / 1000))
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
+}
+
 // ---------- App ----------
 function App() {
   const [route, setRoute] = useState(readUrl())
@@ -153,6 +169,9 @@ function Home({ nav }) {
           <button className="btn">Choose PPTX File</button>
           <input ref={fileRef} data-testid="upload" type="file" accept=".pptx" style={{ display: 'none' }} onChange={onUpload} />
         </div>
+        <div className="home-actions">
+          <button className="btn" data-testid="upload-btn" onClick={() => fileRef.current?.click()}>Upload</button>
+        </div>
 
         <section className="archive" data-testid="archive">
           <h2>Presentation Archive</h2>
@@ -171,7 +190,7 @@ function Home({ nav }) {
                     <td className="row-actions">
                       <button className="btn btn-secondary btn-sm" onClick={() => nav({ session: p.id, mode: 'edit' })}>Review / Edit</button>
                       <button className="btn btn-sm" onClick={() => nav({ session: p.id, mode: 'present' })}>Present</button>
-                      <button className="btn btn-secondary btn-sm" onClick={() => nav({ session: p.id, mode: 'bulletin' })}>Bulletin</button>
+                      <button className="btn btn-secondary btn-sm" data-testid="devotionals-btn" onClick={() => nav({ session: p.id, mode: 'bulletin' })}>Devotionals</button>
                       <button className="btn btn-secondary btn-sm" onClick={() => remove(p.id)}>Delete</button>
                     </td>
                   </tr>
@@ -354,6 +373,7 @@ function Presenter({ id, nav }) {
   // 'off' | 'api' | 'fallback'. Pairing never writes this. Only the Fullscreen
   // button, the exit control, Esc, and fullscreenchange / webkitfullscreenchange do.
   const fsMode = useRef('off')
+  const [chromeOn, revealChrome] = useRevealChrome()
   const total = pres?.slides.length || 0
   const audience = useAudienceUrl(pres)
   const bulletinUrl = audience.url || bulletinUrlFor(id)
@@ -444,13 +464,19 @@ function Presenter({ id, nav }) {
   const phoneConnected = paired && Date.now() - (remote.status.lastSeen || 0) < 60 * 1000
   const statusLine = remote ? `Direct WebRTC: ${remote.status.peer} • Nostr relay: ${remote.status.relay} • MQTT: ${remote.status.mqtt}${paired ? ` • phone via ${remote.status.controllerVia || '…'}` : ''}${remote.status.rejected ? ` • ${remote.status.rejected} rejected` : ''}` : ''
 
-  // Fullscreen: tap/click left half = back, right half = next; swipe right = back, swipe left = next
-  const onStageClick = e => { const r = e.currentTarget.getBoundingClientRect(); go(e.clientX - r.left < r.width / 2 ? -1 : 1) }
-  const onTouchStart = e => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY } }
+  // Fullscreen: tap/click left half = back, right half = next; swipe right = back, swipe left = next.
+  // The first tap only reveals the counter and Exit, which hide again after 3s. Swipe down exits.
+  const onStageClick = e => {
+    if (!chromeOn) { revealChrome(); return }
+    revealChrome()
+    const r = e.currentTarget.getBoundingClientRect(); go(e.clientX - r.left < r.width / 2 ? -1 : 1)
+  }
+  const onTouchStart = e => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY }; revealChrome() }
   const onTouchEnd = e => {
     const s = touch.current; touch.current = null
     if (!s) return
     const t = e.changedTouches[0]; const dx = t.clientX - s.x, dy = t.clientY - s.y
+    if (dy > 70 && dy > Math.abs(dx)) { e.preventDefault(); exitFull(); return }
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) { e.preventDefault(); go(dx > 0 ? -1 : 1) }
   }
 
@@ -458,7 +484,7 @@ function Presenter({ id, nav }) {
     <div className={`app ${full ? 'is-fullscreen' : ''}`}>
       <Header nav={nav}>
         <button className="btn btn-secondary" onClick={() => nav({ session: id, mode: 'edit' })}>Review / Edit</button>
-        <button className="btn btn-secondary" onClick={() => nav({ session: id, mode: 'bulletin' })}>Bulletin</button>
+        <button className="btn btn-secondary" data-testid="devotionals-btn" onClick={() => nav({ session: id, mode: 'bulletin' })}>Devotionals</button>
         <button className="btn btn-secondary" data-testid="dl-pptx" onClick={() => downloadPptx(pres, published ? bulletinUrl : null)}>Download PPTX</button>
         <button className="btn btn-secondary" data-testid="dl-pdf" onClick={() => window.open(`${base()}?session=${id}&mode=print&what=slides`, '_blank')}>Download PDF</button>
         <button className="btn" data-testid="remote-btn" onClick={startRemoteHost}>📱 Remote</button>
@@ -505,17 +531,17 @@ function Presenter({ id, nav }) {
       </main>
       {black && !full && <div className="black-veil" onClick={() => setBlack(false)} />}
       {full && (
-        <div className="fullscreen-overlay" data-testid="fs-overlay" data-fs-mode={fsMode.current} onClick={onStageClick} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        <div className="fullscreen-overlay" data-testid="fs-overlay" data-fs-mode={fsMode.current} data-chrome={chromeOn ? 'shown' : 'hidden'} onMouseMove={revealChrome} onClick={onStageClick} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
           <SlideStage slide={pres.slides[idx]} qr={qr} sermonTitle={idx === 0 ? sermonTitleOf(pres) : null} className="fs-stage" fill />
           {black && <div className="black-veil" />}
-          <div className="fs-controls" onClick={e => e.stopPropagation()}>
+          <div className={`fs-controls ${chromeOn ? 'show' : ''}`} onClick={e => e.stopPropagation()} onMouseMove={revealChrome}>
             <button aria-label="Previous slide" data-testid="fs-prev" onClick={() => go(-1)}>‹</button>
-            <span>{idx + 1} / {total}</span>
+            <span data-testid="fs-counter">{idx + 1} / {total}</span>
             <button aria-label="Next slide" data-testid="fs-next" onClick={() => go(1)}>›</button>
             {remote && <span className={`dot ${phoneConnected ? 'ok' : ''}`} title={statusLine} />}
             {remote && <span className="fs-text" data-testid="fs-paired">{phoneConnected ? 'Paired' : 'Remote on'}</span>}
             {remote && <button className="fs-text" data-testid="fs-end-remote" onClick={stopRemote}>End remote</button>}
-            <button aria-label="Exit fullscreen" data-testid="fs-exit" onClick={exitFull}>✕</button>
+            <button aria-label="Exit fullscreen" data-testid="fs-exit" onClick={exitFull}>Exit</button>
           </div>
         </div>
       )}
@@ -536,6 +562,27 @@ function RemoteControl({ code: initial }) {
   const lastNav = useRef(0)
   const handledPointer = useRef(false)
   const remoteLeave = useRef(false)
+  const [chromeOn, revealChrome] = useRevealChrome()
+  const clock0 = useRef(null)
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!state) return
+    if (!clock0.current) clock0.current = Date.now()
+    const id = setInterval(() => setElapsed(Date.now() - clock0.current), 1000)
+    return () => clearInterval(id)
+  }, [state])
+  useEffect(() => {
+    const nudge = () => ref.current?.nudge()
+    const onVis = () => { if (document.visibilityState === 'visible') nudge() }
+    window.addEventListener('online', nudge)
+    window.addEventListener('pageshow', nudge)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('online', nudge)
+      window.removeEventListener('pageshow', nudge)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [code])
   useEffect(() => bindFullscreenChange(() => {
     if (fullscreenElement()) { remoteLeave.current = false; setFsKind('api') }
     else if (!remoteLeave.current) setFsKind(k => (k === 'api' ? 'fallback' : k))
@@ -606,7 +653,8 @@ function RemoteControl({ code: initial }) {
   return (
     <div className={`app remote-app ${inFs ? 'remote-fs' : ''}`} ref={shellRef} data-fs-kind={fsKind}>
       {inFs && state ? (
-        <div className="remote-fs-view" data-testid="remote-fs">
+        <div className={`remote-fs-view ${chromeOn ? 'chrome' : ''}`} data-testid="remote-fs" data-chrome={chromeOn ? 'shown' : 'hidden'} onMouseMove={revealChrome}>
+          <div className="remote-fs-slide-wrap">
           <SlideStage slide={state.cur} sermonTitle={state.idx === 0 ? state.sermonTitle : null} className="remote-fs-stage" fill testid="remote-fs-slide" />
           <div
             className="remote-fs-hit"
@@ -618,20 +666,34 @@ function RemoteControl({ code: initial }) {
             }}
             onPointerUp={e => {
               if (!origin.current || origin.current.id !== e.pointerId) return
+              const dx = e.clientX - origin.current.x
+              const dy = e.clientY - origin.current.y
               handledPointer.current = true
-              navigateHalf(e, true)
               origin.current = null
+              revealChrome()
+              if (dy > 70 && dy > Math.abs(dx)) { exitRemoteFs(); return }
+              navigateHalf(e, true)
             }}
             onClick={e => {
               if (handledPointer.current) { handledPointer.current = false; e.preventDefault(); return }
               navigateHalf(e, false)
             }}
           >
-            <div className="remote-fs-half left" data-testid="remote-fs-prev"><span>Previous</span></div>
-            <div className="remote-fs-half right" data-testid="remote-fs-next"><span>Next</span></div>
+            <div className="remote-fs-half left" data-testid="remote-fs-prev" />
+            <div className="remote-fs-half right" data-testid="remote-fs-next" />
           </div>
-          <div className="remote-fs-chrome" data-fs-chrome>
+          </div>
+          <aside className="remote-fs-notes" data-testid="remote-fs-notes">
+            <b>Notes</b>
+            <p>{state.notes || 'No notes on this slide.'}</p>
+          </aside>
+          <div className="remote-fs-next" data-testid="remote-fs-next-slide">
+            {state.next ? <SlideStage slide={state.next} className="remote-fs-next-stage" /> : <p className="muted">End</p>}
+            <span>Next</span>
+          </div>
+          <div className={`remote-fs-chrome ${chromeOn ? 'show' : ''}`} data-fs-chrome>
             <span data-testid="remote-fs-counter">{state.idx + 1} / {state.total}{state.black ? ' · BLACK' : ''}</span>
+            <span data-testid="remote-fs-timer">{clockText(elapsed)}</span>
             <button type="button" data-testid="remote-fs-exit" onClick={exitRemoteFs}>Exit</button>
           </div>
         </div>
@@ -639,6 +701,7 @@ function RemoteControl({ code: initial }) {
       <div className={`remote-bar ${ok ? 'ok' : bad ? 'bad' : ''}`} data-testid="remote-status" data-state={status.state}>{ok ? '● ' : '○ '}{LABEL[status.state] || status.state}{ok && status.via ? ` • ${status.via}` : ''}</div>
       <main className="main">
         {status.detail && <p className={bad ? 'error-text' : 'muted'} data-testid="remote-detail">{status.detail}</p>}
+        {status.state !== 'connected' && status.state !== 'ended' && status.state !== 'busy' && <button className="btn" data-testid="r-retry" onClick={() => ref.current?.nudge()}>Retry</button>}
         {status.state === 'lost'
           ? <button className="btn" data-testid="r-repair" onClick={() => { ref.current?.repair(); window.location.reload() }}>Re-pair</button>
           : status.state === 'ended' || status.state === 'busy'

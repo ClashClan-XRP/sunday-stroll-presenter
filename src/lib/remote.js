@@ -17,6 +17,7 @@ import Peer from 'peerjs'
 import mqtt from 'mqtt'
 import { SimplePool } from 'nostr-tools/pool'
 import { generateSecretKey, finalizeEvent } from 'nostr-tools/pure'
+import { applyPhoneMessage, WAITING_DETAIL } from './pairing.js'
 
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' // 31 symbols, no 0/O/1/I/L
 export const CODE_LEN = 18 // 18 * log2(31) = ~89 bits
@@ -65,6 +66,14 @@ async function unseal(key, text) {
   if (typeof text !== 'string') throw new Error('bad')
   const [iv, ct] = text.split('.')
   return JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(iv) }, key, unb64(ct))))
+}
+// PeerJS on iOS sometimes delivers a Blob or bytes instead of the string we sent.
+async function payloadText(payload) {
+  if (typeof payload === 'string') return payload
+  if (payload instanceof ArrayBuffer) return dec.decode(new Uint8Array(payload))
+  if (ArrayBuffer.isView(payload)) return dec.decode(new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength))
+  if (typeof Blob !== 'undefined' && payload instanceof Blob) return payload.text()
+  return ''
 }
 
 // ---- replay protection ----
@@ -181,13 +190,13 @@ export function startHost(code, { onCommand, onStatus, getState }) {
     nostr?.send(payload); mq?.send(payload)
   }
   // State goes out at most once per 40 ms and always carries who is in control and the last command accepted.
-  const broadcast = () => { clearTimeout(bt); bt = setTimeout(() => sendAll({ t: 'state', ...getState(), hs, ctl: ctl?.sid || null, ack }), 40) }
+  const broadcast = () => { clearTimeout(bt); bt = setTimeout(() => sendAll({ t: 'state', ...getState(), hs, ctl: ctl?.sid || null, hpub: ctl?.hpub || null, ack }), 40) }
   const reject = () => { status.rejected++; emit() }
   const beat = setInterval(() => { if (!closed) broadcast() }, 10000) // keeps the phone in sync if a relay drops a message
 
   const receive = async (payload, via) => {
     let m
-    try { m = await unseal(key, payload) } catch { return } // not ours / wrong code
+    try { m = await unseal(key, await payloadText(payload)) } catch { return } // not ours / wrong code
     if (!guard(m)) { reject(); return }
     if (m.t === 'hello') {
       if (typeof m.epub !== 'string') return
@@ -268,23 +277,34 @@ export function startHost(code, { onCommand, onStatus, getState }) {
 // onStatus({ state, via, detail }) where state is one of:
 // 'deriving' | 'connecting' | 'waiting' | 'connected' | 'notfound' | 'busy' | 'ended'
 export function startRemote(code, { onState, onStatus }) {
-  let closed = false, key = null, chan = null, peer = null, conn = null, nostr = null, mq = null, retry = null, hello = null, nf = null, watch = null
+  let closed = false, key = null, chan = null, peer = null, conn = null, nostr = null, mq = null, retry = null, hello = null, nf = null, watch = null, stale = null
   let hs = null, lastStateAt = 0, via = null, state = 'deriving', detail = ''
   let me = null, pk = null, pairedHs = null, inner = null, lastHello = 0
   let pending = null // { n, at } - oldest command not yet acknowledged by the laptop
   const guard = makeGuard()
   let out = null
   const emit = () => onStatus?.({ state, via, detail })
-  const set = (s, d = '') => { if (s !== state) log('phone ->', s); state = s; detail = d; emit() }
+  let waitingSince = 0
+  const set = (s, d = '') => {
+    if (s === 'waiting' && state !== 'waiting') waitingSince = Date.now()
+    if (s === state && d === detail) return
+    if (s !== state) log('phone ->', s)
+    state = s; detail = d; emit()
+  }
   const started = Date.now()
-  const LOST = 'The laptop isn\'t confirming this phone\'s taps: the connection dropped, or the laptop no longer accepts this phone. Tap "Re-pair". If that fails, scan the laptop\'s code again.'
+  const LOST = 'The laptop isn\'t confirming this phone\'s taps: the connection dropped, or the laptop no longer accepts this phone. Tap Retry. If that fails, scan the laptop\'s code again.'
 
   const send = async obj => {
-    if (!key || closed) return
+    if (!key || closed || !out) return false
     const payload = await seal(key, out(obj))
-    if (conn?.open) conn.send(payload) // exactly one transport per message
-    else if (nostr?.ready) nostr.send(payload)
-    else mq?.send(payload)
+    // Every transport, not only the first. On iPhone the WebRTC channel can look
+    // open while the laptop never sees the hello; Nostr or MQTT still delivers it.
+    // The laptop's replay guard applies a duplicate at most once.
+    let sent = false
+    if (conn?.open) { try { conn.send(payload); sent = true } catch {} }
+    try { if (nostr?.ready) { await nostr.send(payload); sent = true } } catch {}
+    try { if (mq?.ready) { mq.send(payload); sent = true } } catch {}
+    return sent
   }
   const sendHello = () => { if (!me || Date.now() - lastHello < 2500) return; lastHello = Date.now(); send({ t: 'hello', epub: me.pub }) }
   const sendCmd = async c => {
@@ -295,34 +315,29 @@ export function startRemote(code, { onState, onStatus }) {
     send({ t: 'cmd', box })
   }
 
-  const receive = async (payload, through) => {
+  let chain = Promise.resolve()
+  const receive = (payload, through) => {
+    chain = chain.then(() => onHost(payload, through)).catch(err => log('phone receive', err?.message || err))
+  }
+  const onHost = async (payload, through) => {
     let m
-    try { m = await unseal(key, payload) } catch { return }
+    try { m = await unseal(key, await payloadText(payload)) } catch { return }
     if (!guard(m)) return
-    if (m.t === 'paired' && m.to === out.sid && typeof m.hpub === 'string') {
-      if (pk && pairedHs === m.sid) return // first answer for this laptop session wins
-      pk = await commandKey(me.priv, m.hpub, chan, m.sid, out.sid); pairedHs = m.sid
-      if (state !== 'connected') set('connected')
-    } else if (m.t === 'state') {
-      if (state === 'ended' || state === 'lost') return
-      hs = m.hs; lastStateAt = Date.now(); via = through
-      if (pending) log('phone state ack', m.ack, 'want', pending.n)
-      if (pending && m.ack >= pending.n) { pending = null; log('phone acked') }
-      if (m.ctl && m.ctl !== out.sid) {
-        if (state !== 'busy') set('busy', 'Another phone is already controlling this presentation. On the laptop, click "Disconnect / New code" and scan the new code.')
-        return
-      }
-      if (state === 'busy') return // a refused phone stays out until its user enters a new code
-      if (!m.ctl || pairedHs !== m.hs || !pk) { pk = null; if (state === 'connected') set('waiting'); sendHello() } // laptop restarted or not paired yet
-      else if (pk && state !== 'connected') set('connected')
-      else emit()
-      onState(m)
-    } else if (m.t === 'busy' && m.to === out.sid) {
-      if (!pk) set('busy', 'Another phone is already controlling this presentation. On the laptop, click "Disconnect / New code" and scan the new code.')
-    } else if (m.t === 'bye') {
-      set('ended', 'The presenter ended the remote session or made a new code. Scan the new code on the laptop.')
-      stop()
+    const decision = applyPhoneMessage({ state, sid: out.sid, pk: !!pk, pairedHs, detail }, m)
+    if (decision.dropPk) { pk = null; pairedHs = null }
+    if (decision.derive) {
+      try { pk = await commandKey(me.priv, decision.derive.hpub, chan, decision.derive.hs, out.sid); pairedHs = decision.derive.hs }
+      catch { pk = null; pairedHs = null; set('waiting', 'Could not finish pairing. Tap Retry.'); return }
     }
+    if (m.t === 'state') {
+      hs = m.hs; lastStateAt = Date.now(); via = through
+      if (pending && m.ack >= pending.n) { pending = null; log('phone acked') }
+    }
+    const waitingLong = state === 'waiting' && waitingSince && Date.now() - waitingSince > 8000
+    set(decision.state, decision.state === 'waiting' && waitingLong ? WAITING_DETAIL : decision.detail)
+    if (decision.hello) sendHello()
+    if (decision.showState) onState(m)
+    if (decision.stop) stop()
   }
 
   const connectPeer = () => {
@@ -353,11 +368,12 @@ export function startRemote(code, { onState, onStatus }) {
     nostr = nostrTransport(chan, p => receive(p, 'Nostr relay'), st => { if (st === 'ready') { if (state === 'connecting') set('waiting'); lastHello = 0; sendHello() } })
     mq = mqttTransport(chan, 'l2p', 'p2l', p => receive(p, 'MQTT relay'), st => { if (st === 'ready') sendHello() })
     connectPeer()
-    // Until paired, keep saying hello; once paired, a light keep-alive every ~20 s.
-    hello = setInterval(() => { if (closed) return; if (!pk && state !== 'busy') sendHello(); else if (state === 'connected' && Date.now() % 20000 < 4000) sendCmd({ c: 'ping' }) }, 4000)
+    // Until paired, keep saying hello on every transport; once paired, a light keep-alive.
+    hello = setInterval(() => { if (closed) return; if (!pk && state !== 'busy' && state !== 'ended') sendHello(); else if (state === 'connected' && Date.now() % 20000 < 4000) sendCmd({ c: 'ping' }) }, 4000)
     nf = setInterval(() => {
-      if (closed || lastStateAt || state === 'busy') return
-      if (Date.now() - started > 10000) set('notfound', 'No presenter answered this code. Check that the code matches the laptop, and that the laptop\'s Remote panel is open. Still trying…')
+      if (closed || state === 'busy' || state === 'ended' || state === 'connected') return
+      if (!lastStateAt && Date.now() - started > 10000) set('notfound', 'No presenter answered this code. Check that the code matches the laptop, and that the laptop\'s Remote panel is open. Tap Retry.')
+      else if (state === 'waiting' && waitingSince && Date.now() - waitingSince > 8000) set('waiting', WAITING_DETAIL)
     }, 1000)
     // A command not acknowledged within 6 s means the laptop no longer accepts this phone.
     watch = setInterval(() => {
@@ -367,16 +383,23 @@ export function startRemote(code, { onState, onStatus }) {
       if (Date.now() - pending.at > 9000) set('lost', LOST)
     }, 500)
     // No state from the laptop for 25 s (it sends one every 10 s): assume it restarted and pair again.
-    setInterval(() => { if (!closed && state === 'connected' && Date.now() - lastStateAt > 25000) { pk = null; set('waiting'); lastHello = 0; sendHello() } }, 2000)
+    stale = setInterval(() => { if (!closed && state === 'connected' && Date.now() - lastStateAt > 25000) { pk = null; pairedHs = null; set('waiting', WAITING_DETAIL); lastHello = 0; sendHello() } }, 2000)
   })
 
   const stop = () => {
-    closed = true; clearTimeout(retry); clearInterval(hello); clearInterval(nf); clearInterval(watch)
+    closed = true; clearTimeout(retry); clearInterval(hello); clearInterval(nf); clearInterval(watch); clearInterval(stale)
     try { conn?.close() } catch {} ; try { peer?.destroy() } catch {} ; nostr?.close(); mq?.close()
+  }
+  const nudge = () => {
+    if (closed || state === 'ended' || state === 'busy') return
+    if (state === 'lost') { pk = null; pairedHs = null; set('waiting', '') }
+    lastHello = 0
+    sendHello()
   }
   return {
     send(cmd) { if (state === 'connected') sendCmd(cmd) },
-    // Re-pair: reconnect with this phone's same id and key, so the laptop re-confirms it as the controller.
+    // Ask again without throwing away this phone's id. Used for Retry, wake, and reload recovery.
+    nudge,
     repair() { stop() },
     stop
   }
