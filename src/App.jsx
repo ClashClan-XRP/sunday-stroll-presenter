@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { parse } from 'pptxtojson'
 import { loadArchive, savePresentation, getPresentation, deletePresentation, newId, encodePortable, decodePortable, seedFromServer, fetchServerSession, exportSessionJson } from './lib/store'
+import { uploadErrorMessage } from './lib/uploadError'
 import { generateDevotionals, detectTheme, DAYS, BOOKS, VERSIONS, formatRef, passageUrl, dayDate, scriptureLabel } from './lib/devotionals'
 import { downloadPptx, downloadDevotionals } from './lib/exporters'
 import { SlideStage } from './SlideStage'
@@ -131,7 +132,7 @@ function Home({ nav }) {
       nav({ session: pres.id, mode: 'edit' })
     } catch (err) {
       console.error('Parse error:', err)
-      alert('Could not parse PPTX. Please try another file.')
+      alert(uploadErrorMessage(err))
     } finally { setBusy(false) }
   }
 

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test src/lib/store.test.mjs src/lib/uploadError.test.mjs"
   },
   "dependencies": {
     "mqtt": "^5.16.1",
