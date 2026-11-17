@@ -3,17 +3,89 @@
 const KEY = 'ssp_archive_v1'
 const OLD_KEY = 'swp_archive_v1' // storage key used before the project rename
 
-export function loadArchive() {
-  try { return JSON.parse(localStorage.getItem(KEY) || localStorage.getItem(OLD_KEY) || '[]') } catch { return [] }
+const isQuota = e => e?.name === 'QuotaExceededError' || /quota/i.test(e?.message || '') || e?.code === 22
+const isDataUrl = src => typeof src === 'string' && src.startsWith('data:')
+
+function eachImageSrc(list, visit) {
+  for (const pres of list || []) {
+    for (const slide of pres?.slides || []) {
+      for (const src of slide.images || []) visit(src)
+      if (slide.bg?.type === 'image') visit(slide.bg.src)
+      for (const el of slide.elements || []) if (el?.kind === 'image') visit(el.src)
+    }
+  }
 }
 
-function write(list) {
+// Identical pictures (a content overlay repeated on many slides) are stored once.
+function pack(list) {
+  const counts = new Map()
+  eachImageSrc(list, src => { if (isDataUrl(src)) counts.set(src, (counts.get(src) || 0) + 1) })
+  const repeated = [...counts.entries()].filter(([, n]) => n > 1)
+  if (!repeated.length) return list
+  const pool = repeated.map(([src]) => src)
+  const idOf = new Map(pool.map((src, i) => [src, i]))
+  const ref = src => (idOf.has(src) ? `sspimg:${idOf.get(src)}` : src)
+  return { v: 2, pool, items: mapImageSrcs(list, ref) }
+}
+
+function mapImageSrcs(list, mapSrc) {
+  return (list || []).map(pres => {
+    if (!pres || !Array.isArray(pres.slides)) return pres
+    return {
+      ...pres,
+      slides: pres.slides.map(slide => ({
+        ...slide,
+        images: Array.isArray(slide.images) ? slide.images.map(mapSrc) : slide.images,
+        bg: slide.bg?.type === 'image' ? { ...slide.bg, src: mapSrc(slide.bg.src) } : slide.bg,
+        elements: Array.isArray(slide.elements)
+          ? slide.elements.map(el => (el?.kind === 'image' && el.src ? { ...el, src: mapSrc(el.src) } : el))
+          : slide.elements
+      }))
+    }
+  })
+}
+
+function expandPool(items, pool) {
+  const src = ref => {
+    const m = typeof ref === 'string' && /^sspimg:(\d+)$/.exec(ref)
+    return m ? (pool[Number(m[1])] ?? '') : ref
+  }
+  return mapImageSrcs(items, src)
+}
+
+// Drop embedded pictures. The importer puts them on elements[].src and bg.src, not slides[].images.
+function stripImages(list) {
+  return mapImageSrcs(list, src => (isDataUrl(src) ? '' : src)).map(pres => {
+    if (!pres || !Array.isArray(pres.slides)) return pres
+    return { ...pres, slides: pres.slides.map(slide => ({ ...slide, images: [] })) }
+  })
+}
+
+export function loadArchive() {
   try {
-    localStorage.setItem(KEY, JSON.stringify(list))
+    const raw = localStorage.getItem(KEY) || localStorage.getItem(OLD_KEY)
+    if (!raw) return []
+    const data = JSON.parse(raw)
+    if (Array.isArray(data)) return data
+    if (data && Array.isArray(data.items)) return expandPool(data.items, data.pool || [])
+    return []
+  } catch { return [] }
+}
+
+export function write(list) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(pack(list)))
+    return list
   } catch (e) {
-    // Quota exceeded (usually embedded images) - retry without images.
-    const slim = list.map(p => ({ ...p, slides: p.slides.map(s => ({ ...s, images: [] })) }))
-    localStorage.setItem(KEY, JSON.stringify(slim))
+    if (!isQuota(e)) throw e
+    // Pictures are the bulk of a deck. Keep the text and drop the image bytes.
+    const slim = stripImages(list)
+    try {
+      localStorage.setItem(KEY, JSON.stringify(slim))
+    } catch (again) {
+      throw again
+    }
+    return slim
   }
 }
 
@@ -21,8 +93,8 @@ export function savePresentation(pres) {
   const h = hiddenIds(); if (h.delete(pres.id)) setHidden(h)
   const list = loadArchive().filter(p => p.id !== pres.id)
   const updated = { ...pres, updatedAt: new Date().toISOString() }
-  write([updated, ...list])
-  return updated
+  const stored = write([updated, ...list])
+  return stored[0]
 }
 
 export function getPresentation(id) {
