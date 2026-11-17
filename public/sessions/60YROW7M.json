@@ -1,0 +1,313 @@
+{
+ "id": "60YROW7M",
+ "title": "Sermon_Dev",
+ "fileName": "Sermon_Dev.pptx",
+ "theme": "Peace on the Family Front - Ephesians 5:22-6:4",
+ "weekOf": "2026-11-15",
+ "version": "ESV",
+ "slides": [
+  {
+   "id": "s0",
+   "title": "Sermon_Dev",
+   "body": "Peace on the Family Front\nCamp Carroll Chapel · Ephesians 5",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s1",
+   "title": "Pre-Service",
+   "body": "",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s2",
+   "title": "Pre-Service Loop: Bible Trivia",
+   "body": "Bible trivia loop runs before the service starts.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s3",
+   "title": "Warm-up",
+   "body": "",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s4",
+   "title": "Welcome to Camp Carroll Chapel",
+   "body": "Welcome! We're glad you're here.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s5",
+   "title": "Service",
+   "body": "",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s6",
+   "title": "Call to Worship",
+   "body": "Let's stand and worship together.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s7",
+   "title": "Goodness of God",
+   "body": "Lyrics from Proclaim/CCLI\n(not reproduced in this test deck)",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s8",
+   "title": "Announcements",
+   "body": "Chapel announcements for the week.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s9",
+   "title": "Offering",
+   "body": "Giving as an act of worship.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s10",
+   "title": "Peace on the Family Front",
+   "body": "The hardest spiritual warfare often happens at home.\nMutual submission under the authority of Christ.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s11",
+   "title": "A Circular Letter: WHO We Are and WHAT We Are Made For",
+   "body": "Ephesians 1:21-23\nChrist is above every rule and authority.\nThe church is His body, the fullness of Him who fills all in all.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s12",
+   "title": "Operations (Salvation)",
+   "body": "Salvation is the foundation for every relationship.\nWe can only live this out in Christ.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s13",
+   "title": "Who Do You Look Like?",
+   "body": "Children resemble their parents.\nWe are called to be imitators of God.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s14",
+   "title": "Mutual Submission",
+   "body": "Ephesians 5:20-21\nGive thanks always, and submit to one another out of reverence for Christ.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s15",
+   "title": "The Passage No One Likes...",
+   "body": "Ephesians 5:22-24\nWives, submit to your own husbands, as to the Lord.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s16",
+   "title": "Husbands, Love as Christ Loved the Church",
+   "body": "Ephesians 5:25-30\nLove sacrificially, as Christ gave Himself up for the church.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s17",
+   "title": "The One-Flesh Mystery",
+   "body": "Ephesians 5:31-33\nThe two become one flesh, a picture of Christ and the church.\nSupporting: Proverbs 5:18, Matthew 19:9-10",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s18",
+   "title": "Children and Fathers",
+   "body": "Ephesians 6:1-4\nChildren obey and honor parents; fathers, do not provoke your children.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s19",
+   "title": "Steps 1-5",
+   "body": "[Step content from the Proclaim export was not in the extracted summary]",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s20",
+   "title": "Step 6",
+   "body": "[Step 6 content from the Proclaim export was not in the extracted summary]",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s21",
+   "title": "Imitators of Christ",
+   "body": "Matthew 28:18\nWe are called to a standard impossible without Christ.\nShow more love and honor than they deserve.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s22",
+   "title": "Respecting the Authority He Establishes",
+   "body": "Romans 13:1-2\nInteract the way Christ calls us to.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s23",
+   "title": "Post-Service",
+   "body": "",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s24",
+   "title": "Lord I Need You",
+   "body": "Lyrics from Proclaim/CCLI\n(not reproduced in this test deck)",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s25",
+   "title": "Benediction",
+   "body": "Go in peace to love and serve the Lord.",
+   "notes": "",
+   "images": []
+  },
+  {
+   "id": "s26",
+   "title": "Have a Blessed Week!",
+   "body": "Scan the QR code for this week's daily devotionals.",
+   "notes": "",
+   "images": []
+  }
+ ],
+ "devotionals": [
+  {
+   "day": "Sunday",
+   "title": "Peace on the Family Front",
+   "fromSlide": "Peace on the Family Front",
+   "ref": {
+    "book": "Ephesians",
+    "chapter": 5,
+    "verseStart": 22,
+    "verseEnd": 4,
+    "endChapter": 6,
+    "version": "ESV"
+   },
+   "reflection": "The hardest spiritual warfare often happens at home. This Sunday's message is mutual submission under the authority of Christ. The key passage is Ephesians 5:22-6:4, the stretch named in the sermon theme and walked through on the following slides. Read that passage and ask where your home needs peace under Christ's authority.",
+   "prayer": "Lord, You are the peace of this house. Put our home under Your authority, and make us quick to choose peace. Amen.",
+   "action": "Read Ephesians 5:22-6:4 once today, then name one place at home that needs this peace."
+  },
+  {
+   "day": "Monday",
+   "title": "Who We Are and What We Are Made For",
+   "fromSlide": "A Circular Letter: WHO We Are and WHAT We Are Made For",
+   "ref": {
+    "book": "Ephesians",
+    "chapter": 1,
+    "verseStart": 21,
+    "verseEnd": 23,
+    "version": "ESV"
+   },
+   "reflection": "This circular letter says who we are and what we are made for. The slide says: Christ is above every rule and authority. The church is His body, the fullness of Him who fills all in all. Peace at home starts here: your family is not your source of fullness. Christ is.",
+   "prayer": "Lord Jesus, You are above every rule and authority, and You fill all in all. Help me love my family from fullness, not from need. Amen.",
+   "action": "Before you walk in the door tonight, pray for each person in your home by name."
+  },
+  {
+   "day": "Tuesday",
+   "title": "Mutual Submission",
+   "fromSlide": "Mutual Submission",
+   "ref": {
+    "book": "Ephesians",
+    "chapter": 5,
+    "verseStart": 20,
+    "verseEnd": 21,
+    "version": "ESV"
+   },
+   "reflection": "The slide says: Give thanks always, and submit to one another out of reverence for Christ. That word comes before the sermon speaks to wives, husbands, or children. The hardest spiritual warfare often happens at home, and thanksgiving is where this slide starts.",
+   "prayer": "Father, give me a thankful heart, and teach me to submit to the people in my home out of reverence for Christ. Amen.",
+   "action": "Thank each family member for one specific thing today."
+  },
+  {
+   "day": "Wednesday",
+   "title": "The Passage No One Likes",
+   "fromSlide": "The Passage No One Likes...",
+   "ref": {
+    "book": "Ephesians",
+    "chapter": 5,
+    "verseStart": 22,
+    "verseEnd": 24,
+    "version": "ESV"
+   },
+   "reflection": "The slide states the line as it stands: Wives, submit to your own husbands, as to the Lord. Sit with that sentence before you add to it, and ask the Lord what honoring Him looks like in your marriage today.",
+   "prayer": "Lord, help me treat this slide's words with honesty, and honor You in how I love my spouse. Amen.",
+   "action": "Pray for your spouse by name, or, if you are single, for one marriage in the chapel family."
+  },
+  {
+   "day": "Thursday",
+   "title": "Husbands, Love as Christ Loved the Church",
+   "fromSlide": "Husbands, Love as Christ Loved the Church",
+   "ref": {
+    "book": "Ephesians",
+    "chapter": 5,
+    "verseStart": 25,
+    "verseEnd": 30,
+    "version": "ESV"
+   },
+   "reflection": "The slide says: Love sacrificially, as Christ gave Himself up for the church. That is the command this slide gives. On this slide, love at home is giving yourself up for the other person.",
+   "prayer": "Jesus, You gave Yourself up for the church. Teach me that same sacrificial love at home. Amen.",
+   "action": "Do one act of service at home today that no one asked you to do."
+  },
+  {
+   "day": "Friday",
+   "title": "The One-Flesh Mystery",
+   "fromSlide": "The One-Flesh Mystery",
+   "ref": {
+    "book": "Ephesians",
+    "chapter": 5,
+    "verseStart": 31,
+    "verseEnd": 33,
+    "version": "ESV"
+   },
+   "also": ["Proverbs 5:18", "Matthew 19:9-10"],
+   "reflection": "The slide says: The two become one flesh, a picture of Christ and the church. It also names Proverbs 5:18 and Matthew 19:9-10, without quoting them, so those verses are not written out here. Let the one-flesh picture shape how you speak about marriage today.",
+   "prayer": "Lord, keep the one-flesh love in our chapel families faithful, a picture of Christ and the church. Amen.",
+   "action": "Encourage a married couple you know with a note or a text."
+  },
+  {
+   "day": "Saturday",
+   "title": "Children and Fathers",
+   "fromSlide": "Children and Fathers",
+   "ref": {
+    "book": "Ephesians",
+    "chapter": 6,
+    "verseStart": 1,
+    "verseEnd": 4,
+    "version": "ESV"
+   },
+   "reflection": "The slide says: Children obey and honor parents; fathers, do not provoke your children. Peace on the family front runs in both directions. Take one step on the side of that line where you stand today.",
+   "prayer": "Father, help children obey and honor their parents, and help fathers not provoke their children. Amen.",
+   "action": "Parents: read Ephesians 6:1-4 with your children. Everyone else: call or message a parent to honor them."
+  }
+ ],
+ "status": "published",
+ "createdAt": "2026-11-14T23:00:47.502Z",
+ "publishedAt": "2026-11-14T23:00:49.820Z",
+ "updatedAt": "2026-11-14T23:00:49.820Z",
+ "sermonTitle": "Peace on the Family Front"
+}

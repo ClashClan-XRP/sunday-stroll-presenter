@@ -1,0 +1,26 @@
+{
+  "name": "sunday-stroll-presenter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sunday Stroll Through The Week - Camp Carroll | Proclaim-style PPTX presenter with realtime follow-along and daily devotionals",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "mqtt": "^5.16.1",
+    "nostr-tools": "^2.26.0",
+    "peerjs": "^1.5.5",
+    "pptxgenjs": "^3.12.0",
+    "pptxtojson": "^1.1.0",
+    "qrcode.react": "^3.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "socket.io-client": "^4.7.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "vite": "^5.4.2"
+  }
+}
