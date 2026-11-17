@@ -24,7 +24,25 @@ const readUrl = () => {
   return { session: q.get('session'), mode: q.get('mode') || (q.get('session') ? 'present' : 'home'), what: q.get('what'), day: q.get('day'), noprint: q.get('noprint'), a: q.get('a'), f: q.get('f'), h: window.location.hash }
 }
 
-const base = () => `${window.location.origin}${window.location.pathname}`
+// Drop a view entry filename so links made while that page is open stay on the
+// site root. Existing ?session / ?remote / ?b URLs keep working.
+const base = () => {
+  const path = window.location.pathname.replace(/\/(?:index|presenter|remote|bulletin|qr)\.html$/, '/')
+  return `${window.location.origin}${path}`
+}
+const DEFAULT_TITLE = 'Sunday Stroll Through The Week - Camp Carroll'
+export function documentTitle(route = readUrl(), path = window.location.pathname) {
+  if (/\/qr\.html$/.test(path)) return 'Sunday Stroll - QR'
+  if (/\/remote\.html$/.test(path)) return 'Sunday Stroll - Remote'
+  if (/\/bulletin\.html$/.test(path)) return 'Sunday Stroll - Bulletin'
+  if (/\/presenter\.html$/.test(path)) return 'Sunday Stroll - Presenter'
+  const q = new URLSearchParams(window.location.search)
+  if (q.has('b')) return 'Sunday Stroll - QR'
+  if (route?.mode === 'remote') return 'Sunday Stroll - Remote'
+  if (route?.mode === 'bulletin' || route?.mode === 'devotionals') return 'Sunday Stroll - Bulletin'
+  if (route?.mode === 'present') return 'Sunday Stroll - Presenter'
+  return DEFAULT_TITLE
+}
 // The audience QR opens the all-week bulletin. (Live slide sync is deferred - see README.)
 // Short audience links keep the QR small: ?b=ID (hosted) or ?b=ID.FINGERPRINT (online copy). Old ?session=…&mode=bulletin links still work.
 export const bulletinUrlFor = (id, f) => `${base()}?b=${id}${f ? `.${f}` : ''}`
@@ -48,6 +66,7 @@ export const sermonTitleOf = pres => pres?.sermonTitle || (pres?.slides?.[0]?.bo
 // ---------- App ----------
 function App() {
   const [route, setRoute] = useState(readUrl())
+  useEffect(() => { document.title = documentTitle(route) }, [route])
   const nav = useCallback(params => {
     const q = new URLSearchParams()
     Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && !(k === 'mode' && v === 'home')) q.set(k, v) })
