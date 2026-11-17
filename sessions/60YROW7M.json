@@ -198,8 +198,25 @@
  ],
  "devotionals": [
   {
+   "day": "Sunday",
+   "title": "Peace on the Family Front",
+   "fromSlide": "Peace on the Family Front",
+   "ref": {
+    "book": "Ephesians",
+    "chapter": 5,
+    "verseStart": 22,
+    "verseEnd": 4,
+    "endChapter": 6,
+    "version": "ESV"
+   },
+   "reflection": "The hardest spiritual warfare often happens at home. This Sunday's message is mutual submission under the authority of Christ. The key passage is Ephesians 5:22-6:4, the stretch named in the sermon theme and walked through on the following slides. Read that passage and ask where your home needs peace under Christ's authority.",
+   "prayer": "Lord, You are the peace of this house. Put our home under Your authority, and make us quick to choose peace. Amen.",
+   "action": "Read Ephesians 5:22-6:4 once today, then name one place at home that needs this peace."
+  },
+  {
    "day": "Monday",
-   "title": "Who We Are: Filled by Christ",
+   "title": "Who We Are and What We Are Made For",
+   "fromSlide": "A Circular Letter: WHO We Are and WHAT We Are Made For",
    "ref": {
     "book": "Ephesians",
     "chapter": 1,
@@ -207,13 +224,14 @@
     "verseEnd": 23,
     "version": "ESV"
    },
-   "reflection": "Paul wrote Ephesians as a circular letter for many churches, reminding them WHO they are and WHAT they are made for. Christ is seated far above every rule and authority, and the church is His body, the fullness of Him who fills all in all. Peace at home starts here: your family is not your source of fullness; Christ is. When you stop demanding that your spouse, parents, or children fill you up, you are free to serve them.",
-   "prayer": "Lord Jesus, You are above every authority and You fill all in all. Fill me today so I can love my family from fullness, not need. Amen.",
+   "reflection": "This circular letter says who we are and what we are made for. The slide says: Christ is above every rule and authority. The church is His body, the fullness of Him who fills all in all. Peace at home starts here: your family is not your source of fullness. Christ is.",
+   "prayer": "Lord Jesus, You are above every rule and authority, and You fill all in all. Help me love my family from fullness, not from need. Amen.",
    "action": "Before you walk in the door tonight, pray for each person in your home by name."
   },
   {
    "day": "Tuesday",
-   "title": "Mutual Submission Under Christ",
+   "title": "Mutual Submission",
+   "fromSlide": "Mutual Submission",
    "ref": {
     "book": "Ephesians",
     "chapter": 5,
@@ -221,13 +239,14 @@
     "verseEnd": 21,
     "version": "ESV"
    },
-   "reflection": "Before Paul speaks to wives, husbands, or children, he speaks to everyone: give thanks always, and submit to one another out of reverence for Christ. Submission here is not about who is better; it is each of us laying down our rights under the One who holds all authority. The hardest spiritual warfare often happens at home, and thanksgiving is one of our first weapons.",
-   "prayer": "Father, give me a thankful heart and teach me to put others before myself out of reverence for Christ. Amen.",
+   "reflection": "The slide says: Give thanks always, and submit to one another out of reverence for Christ. That word comes before the sermon speaks to wives, husbands, or children. The hardest spiritual warfare often happens at home, and thanksgiving is where this slide starts.",
+   "prayer": "Father, give me a thankful heart, and teach me to submit to the people in my home out of reverence for Christ. Amen.",
    "action": "Thank each family member for one specific thing today."
   },
   {
    "day": "Wednesday",
    "title": "The Passage No One Likes",
+   "fromSlide": "The Passage No One Likes...",
    "ref": {
     "book": "Ephesians",
     "chapter": 5,
@@ -235,13 +254,14 @@
     "verseEnd": 24,
     "version": "ESV"
    },
-   "reflection": "Few verses stir more reaction than the call for wives to submit to their own husbands. The key phrase is \"as to the Lord.\" This is not a call to fear or silence but a voluntary trust, offered to Christ first, inside a marriage where the husband is commanded to love sacrificially. It is a standard none of us can keep in our own strength, only in Christ.",
-   "prayer": "Lord, where I resist Your design, soften my heart. Help me honor You in how I treat my spouse, and help us both look to You. Amen.",
-   "action": "Married or single: ask God where you resist rightful authority, and choose one way to honor it today."
+   "reflection": "The slide states the line as it stands: Wives, submit to your own husbands, as to the Lord. Sit with that sentence before you add to it, and ask the Lord what honoring Him looks like in your marriage today.",
+   "prayer": "Lord, help me treat this slide's words with honesty, and honor You in how I love my spouse. Amen.",
+   "action": "Pray for your spouse by name, or, if you are single, for one marriage in the chapel family."
   },
   {
    "day": "Thursday",
-   "title": "Love as Christ Loved the Church",
+   "title": "Husbands, Love as Christ Loved the Church",
+   "fromSlide": "Husbands, Love as Christ Loved the Church",
    "ref": {
     "book": "Ephesians",
     "chapter": 5,
@@ -249,13 +269,14 @@
     "verseEnd": 30,
     "version": "ESV"
    },
-   "reflection": "Husbands receive the larger command: love your wife as Christ loved the church and gave Himself up for her. Christ's love is not passive; it serves, sacrifices, and seeks the other's good. Paul says to love her as your own body, nourishing and cherishing her. Leadership in the home looks like the cross.",
-   "prayer": "Jesus, You gave Yourself for me. Teach me to love my family with that same self-giving love. Amen.",
+   "reflection": "The slide says: Love sacrificially, as Christ gave Himself up for the church. That is the command this slide gives. On this slide, love at home is giving yourself up for the other person.",
+   "prayer": "Jesus, You gave Yourself up for the church. Teach me that same sacrificial love at home. Amen.",
    "action": "Do one act of service at home today that no one asked you to do."
   },
   {
    "day": "Friday",
    "title": "The One-Flesh Mystery",
+   "fromSlide": "The One-Flesh Mystery",
    "ref": {
     "book": "Ephesians",
     "chapter": 5,
@@ -263,13 +284,15 @@
     "verseEnd": 33,
     "version": "ESV"
    },
-   "reflection": "\"The two shall become one flesh.\" Paul calls this a profound mystery that points to Christ and the church. Marriage is meant to display the gospel: a love that stays and a respect that honors. Proverbs 5:18 tells us to rejoice in the wife of our youth. Today, see your marriage, or the marriages around you, as a picture God is painting for the world.",
-   "prayer": "Lord, protect the marriages in our chapel family. Make our homes a picture of Your faithful love. Amen.",
+   "also": ["Proverbs 5:18", "Matthew 19:9-10"],
+   "reflection": "The slide says: The two become one flesh, a picture of Christ and the church. It also names Proverbs 5:18 and Matthew 19:9-10, without quoting them, so those verses are not written out here. Let the one-flesh picture shape how you speak about marriage today.",
+   "prayer": "Lord, keep the one-flesh love in our chapel families faithful, a picture of Christ and the church. Amen.",
    "action": "Encourage a married couple you know with a note or a text."
   },
   {
    "day": "Saturday",
    "title": "Children and Fathers",
+   "fromSlide": "Children and Fathers",
    "ref": {
     "book": "Ephesians",
     "chapter": 6,
@@ -277,23 +300,9 @@
     "verseEnd": 4,
     "version": "ESV"
    },
-   "reflection": "Children are called to obey their parents in the Lord and to honor father and mother, the first commandment with a promise. Fathers are told not to provoke their children to anger but to raise them in the discipline and instruction of the Lord. Peace on the family front runs both ways: honor from children, patience and godly teaching from parents.",
-   "prayer": "Father in heaven, help me honor my parents and lead the children in my life with patience and Your Word. Amen.",
-   "action": "Parents: read a short Bible passage with your kids. Everyone: call or message a parent to honor them."
-  },
-  {
-   "day": "Sunday",
-   "title": "Under His Authority",
-   "ref": {
-    "book": "Matthew",
-    "chapter": 28,
-    "verseStart": 18,
-    "verseEnd": null,
-    "version": "ESV"
-   },
-   "reflection": "Jesus said all authority in heaven and on earth has been given to Him. Every role we carry this week (spouse, parent, child, Soldier, civilian) sits under His authority. We are called to a standard that is impossible without Christ: to show more love and honor than people deserve. As you return to worship today, bring your family to the One who makes peace possible.",
-   "prayer": "Lord Jesus, all authority is Yours. I place my home and my week under Your rule. Make me an imitator of You. Amen.",
-   "action": "Recall one moment this week when you showed more love or honor than was deserved, and give thanks."
+   "reflection": "The slide says: Children obey and honor parents; fathers, do not provoke your children. Peace on the family front runs in both directions. Take one step on the side of that line where you stand today.",
+   "prayer": "Father, help children obey and honor their parents, and help fathers not provoke their children. Amen.",
+   "action": "Parents: read Ephesians 6:1-4 with your children. Everyone else: call or message a parent to honor them."
   }
  ],
  "status": "published",
