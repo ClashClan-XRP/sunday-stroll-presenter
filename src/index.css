@@ -273,11 +273,18 @@ details summary { cursor: pointer; }
 .stage-text .slide-body { white-space: pre-line; }
 .qr-badge { position: absolute; box-sizing: border-box; background: #fff; color: #0f0c29; border-radius: 6pt; padding: 4pt 4pt 2pt; text-align: center; line-height: 1.1; box-shadow: 0 2pt 8pt rgba(0,0,0,0.35); z-index: 2; }
 .qr-badge div { white-space: nowrap; margin-top: 2pt; font-weight: 600; }
-.fullscreen-overlay { cursor: pointer; user-select: none; touch-action: pan-y; }
-.fs-stage { position: fixed; inset: 0; width: 100vw; height: 100vh; border-radius: 0; box-shadow: none; }
-.fs-controls { position: fixed; right: 12px; bottom: 12px; display: flex; gap: 8px; align-items: center; background: rgba(0,0,0,0.45); color: #ddd; padding: 4px 10px; border-radius: 999px; opacity: 0.25; transition: opacity .2s; z-index: 10001; font-size: 14px; cursor: default; }
-.fs-controls:hover { opacity: 1; }
+.fullscreen-overlay { cursor: pointer; user-select: none; touch-action: manipulation; }
+.fs-stage { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; border-radius: 0; box-shadow: none; }
+.fs-controls { position: fixed; left: 12px; bottom: 12px; display: flex; gap: 8px; align-items: center; background: rgba(0,0,0,0.55); color: #ddd; padding: 6px 12px; border-radius: 999px; opacity: 0.92; z-index: 10001; font-size: 14px; cursor: default; }
 .fs-controls button { background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; padding: 0 6px; }
+.fs-controls .fs-text { font-size: 13px; font-weight: 700; }
+.fullscreen-launch { font-size: 1.05rem; padding: 0.85rem 1.35rem; box-shadow: 0 0 0 3px rgba(0, 229, 160, 0.55); }
+.is-fullscreen .remote-panel,
+.is-fullscreen .pair-code,
+:fullscreen .remote-panel,
+:fullscreen .pair-code,
+:-webkit-full-screen .remote-panel,
+:-webkit-full-screen .pair-code { display: none !important; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: #888; display: inline-block; } .dot.ok { background: var(--accent-green); }
 .black-veil { position: fixed; inset: 0; background: #000; z-index: 10000; }
 .edit-preview { margin: 0.5rem 0; max-width: 360px; border-radius: 6px; box-shadow: none; }
@@ -286,6 +293,72 @@ details summary { cursor: pointer; }
 .pair-code { font-size: 2rem; font-weight: 800; letter-spacing: 0.25em; color: var(--accent-green); margin: 0.3rem 0; font-family: ui-monospace, monospace; }
 .remote-status { margin: 0.4rem 0; } .remote-status.ok { color: var(--accent-green); }
 .remote-app .main { max-width: 560px; padding: 1rem; }
+.remote-app .fullscreen-launch { display: block; width: 100%; margin: 0.35rem 0 0.75rem; }
+.remote-app.remote-fs {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: -webkit-fill-available;
+  z-index: 10000;
+  background: #000;
+  overflow: hidden;
+}
+.remote-fs-view { position: absolute; inset: 0; }
+.remote-fs-stage { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0; box-shadow: none; }
+.remote-fs-hit {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  touch-action: manipulation;
+  cursor: pointer;
+  user-select: none;
+}
+.remote-fs-half { position: relative; min-height: 100%; }
+.remote-fs-half.left { box-shadow: inset -1px 0 0 rgba(255,255,255,0.28); }
+.remote-fs-half span {
+  position: absolute;
+  bottom: max(18px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 800;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.28);
+  padding: 0.7rem 1.1rem;
+  border-radius: 999px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+.remote-fs-chrome {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: max(8px, env(safe-area-inset-top)) 12px 28px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.78), rgba(0,0,0,0));
+  color: #fff;
+  pointer-events: none;
+  font-weight: 700;
+}
+.remote-fs-chrome button {
+  pointer-events: auto;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.4);
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
 .remote-bar { position: sticky; top: 0; z-index: 5; padding: 0.6rem 1rem; background: #3a2a10; color: #ffd166; font-size: 0.9rem; }
 .remote-bar.ok { background: #0d3b2e; color: var(--accent-green); }
 .remote-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 0.4rem; }

@@ -1,5 +1,5 @@
 import PptxGenJS from 'pptxgenjs'
-import { devotionalText, formatRef } from './devotionals'
+import { devotionalText, scriptureLabel } from './devotionals'
 
 export async function downloadPptx(pres, followUrl) {
   const pptx = new PptxGenJS()
@@ -20,7 +20,7 @@ const safe = t => (t || 'presentation').replace(/[^a-z0-9_-]+/gi, '_')
 const esc = t => String(t || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
 
 function devoHtml(pres, devos) {
-  const cards = devos.map(d => `<section><h2>${esc(d.day)}: ${esc(d.title)}</h2><p class="ref">${esc(formatRef(d.ref))}</p><p>${esc(d.reflection)}</p><p><b>Prayer:</b> ${esc(d.prayer)}</p><p><b>Today:</b> ${esc(d.action)}</p></section>`).join('')
+  const cards = devos.map(d => `<section><h2>${esc(d.day)}: ${esc(d.title)}</h2><p class="ref">${esc(scriptureLabel(d))}</p>${d.also?.length ? `<p>Also named on the slide: ${esc(d.also.join('; '))}</p>` : ''}<p>${esc(d.reflection)}</p><p><b>Prayer:</b> ${esc(d.prayer)}</p><p><b>Today:</b> ${esc(d.action)}</p></section>`).join('')
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(pres.title)} - Devotionals</title><style>body{font-family:Georgia,serif;max-width:720px;margin:2rem auto;color:#222;line-height:1.5}h1{color:#302b63}section{page-break-inside:avoid;border-top:2px solid #00a37a;padding:.5rem 0 1rem}.ref{font-style:italic;color:#00796b}</style></head><body><h1>${esc(pres.title)}</h1><p><i>${esc(pres.theme)}</i></p>${cards}</body></html>`
 }
 

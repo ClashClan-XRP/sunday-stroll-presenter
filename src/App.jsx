@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import { parse } from 'pptxtojson'
 import { loadArchive, savePresentation, getPresentation, deletePresentation, newId, encodePortable, decodePortable, seedFromServer, fetchServerSession, exportSessionJson } from './lib/store'
-import { generateDevotionals, detectTheme, DAYS, BOOKS, VERSIONS, formatRef, passageUrl, dayDate } from './lib/devotionals'
+import { generateDevotionals, detectTheme, DAYS, BOOKS, VERSIONS, formatRef, passageUrl, dayDate, scriptureLabel } from './lib/devotionals'
 import { downloadPptx, downloadDevotionals } from './lib/exporters'
 import { SlideStage } from './SlideStage'
 import { compress, decompress, publishOnline, fetchOnline, keepAlive, deleteOnline, onlineStatus, KEEP_DAYS } from './lib/publish'
 import { importSlides } from './lib/pptxImport'
 import { newPairCode, normalizeCode, formatCode, validCode, CODE_LEN, startHost, startRemote, lightSlide } from './lib/remote'
+import { bindFullscreenChange, exitFullscreen, fullscreenElement, requestFullscreen } from './lib/fullscreen'
 
 // ---------- helpers ----------
 const htmlToText = html => {
@@ -172,6 +173,7 @@ function RefFields({ value, onChange, disabled, testid }) {
   return (
     <div className="ref-fields" data-testid={testid}>
       <select value={r.book || ''} disabled={disabled} aria-label="Book" onChange={e => set({ book: e.target.value })}>
+        <option value="">No scripture on the slides</option>
         {BOOKS.map(b => <option key={b}>{b}</option>)}
       </select>
       <input type="number" min="1" aria-label="Chapter" title="Chapter" value={r.chapter ?? ''} disabled={disabled} onChange={e => set({ chapter: num(e.target.value) })} />
@@ -179,6 +181,7 @@ function RefFields({ value, onChange, disabled, testid }) {
       <input type="number" min="1" aria-label="Verse start" title="Verse start" value={r.verseStart ?? ''} disabled={disabled} onChange={e => set({ verseStart: num(e.target.value) })} />
       <span>-</span>
       <input type="number" min="1" aria-label="Verse end" title="Verse end (optional)" value={r.verseEnd ?? ''} disabled={disabled} onChange={e => set({ verseEnd: num(e.target.value) })} />
+      <input type="number" min="1" aria-label="End chapter" title="End chapter, if the passage continues into another chapter" placeholder="end ch" value={r.endChapter ?? ''} disabled={disabled} onChange={e => set({ endChapter: num(e.target.value) })} />
       <select value={r.version || 'ESV'} disabled={disabled} aria-label="Version" onChange={e => set({ version: e.target.value })}>
         {VERSIONS.map(v => <option key={v}>{v}</option>)}
       </select>
@@ -300,7 +303,8 @@ function Editor({ id, nav }) {
             {pres.devotionals.map((d, i) => (
               <div className="edit-card" key={d.day} data-testid={`devo-card-${i}`}>
                 <div className="edit-head"><b>{d.day}</b><span className="muted small">{dayDate(pres.weekOf, i)}</span></div>
-                <RefFields value={d.ref} disabled={locked} testid={`ref-${i}`} onChange={ref => setDevo(i, { ref })} />
+                <p className={`small ${d.ref?.book ? 'scripture' : 'warn-text'}`} data-testid={`ref-label-${i}`}>{scriptureLabel(d)}</p>
+                <RefFields value={d.ref} disabled={locked} testid={`ref-${i}`} onChange={ref => setDevo(i, { ref: ref?.book ? ref : null, scriptureFlag: ref?.book ? null : d.scriptureFlag })} />
                 <input value={d.title} disabled={locked} aria-label="Devotional title" onChange={e => setDevo(i, { title: e.target.value })} />
                 <textarea rows={4} value={d.reflection} disabled={locked} data-testid={`devo-${i}`} onChange={e => setDevo(i, { reflection: e.target.value })} />
                 <input value={d.prayer} disabled={locked} aria-label="Prayer" onChange={e => setDevo(i, { prayer: e.target.value })} />
@@ -327,6 +331,9 @@ function Presenter({ id, nav }) {
   const [remote, setRemote] = useState(null) // { code, status }
   const hostRef = useRef(null)
   const touch = useRef(null)
+  // 'off' | 'api' | 'fallback'. Pairing never writes this. Only the Fullscreen
+  // button, the exit control, Esc, and fullscreenchange / webkitfullscreenchange do.
+  const fsMode = useRef('off')
   const total = pres?.slides.length || 0
   const audience = useAudienceUrl(pres)
   const bulletinUrl = audience.url || bulletinUrlFor(id)
@@ -345,12 +352,17 @@ function Presenter({ id, nav }) {
       else if (e.key === 'Home') goto(0)
       else if (e.key === 'End') goto(total - 1)
       else if (['b', 'B', '.'].includes(e.key)) setBlack(v => !v)
-      else if (e.key === 'Escape') setFull(false)
+      else if (e.key === 'Escape') { fsMode.current = 'off'; setFull(false); exitFullscreen().catch(() => {}) }
     }
     window.addEventListener('keydown', k)
-    const fs = () => { if (!document.fullscreenElement) setFull(false) }
-    document.addEventListener('fullscreenchange', fs)
-    return () => { window.removeEventListener('keydown', k); document.removeEventListener('fullscreenchange', fs) }
+    // Entering the Fullscreen API turns the overlay on. Leaving it (a relay
+    // reconnect, a blur, a second display) must not drop the presentation:
+    // only Exit and Esc do that. The overlay stays as a full-viewport fallback.
+    const unbind = bindFullscreenChange(() => {
+      if (fullscreenElement()) { fsMode.current = 'api'; setFull(true) }
+      else if (fsMode.current === 'api') fsMode.current = 'fallback'
+    })
+    return () => { window.removeEventListener('keydown', k); unbind() }
   }, [total])
 
   // Phone remote: state sent to the phone on every change
@@ -393,8 +405,19 @@ function Presenter({ id, nav }) {
   useEffect(() => () => hostRef.current?.stop(), [])
 
   if (!pres) return <NotFound nav={nav} />
-  const enterFull = () => { document.documentElement.requestFullscreen?.().catch(() => {}); setFull(true) }
-  const exitFull = () => { if (document.fullscreenElement) document.exitFullscreen(); setFull(false) }
+  // Called from the button click so the browser still counts it as a user gesture.
+  const enterFull = () => {
+    setFull(true)
+    fsMode.current = 'fallback'
+    requestFullscreen(document.documentElement).then(() => {
+      if (fullscreenElement()) fsMode.current = 'api'
+    }).catch(() => { fsMode.current = 'fallback' })
+  }
+  const exitFull = () => {
+    fsMode.current = 'off'
+    setFull(false)
+    exitFullscreen().catch(() => {})
+  }
   const qr = published && idx === 0 ? bulletinUrl : null
   const remoteUrl = remote ? `${base()}?remote=${remote.code}` : ''
   const paired = !!remote?.status?.controller
@@ -412,13 +435,14 @@ function Presenter({ id, nav }) {
   }
 
   return (
-    <div className="app">
+    <div className={`app ${full ? 'is-fullscreen' : ''}`}>
       <Header nav={nav}>
         <button className="btn btn-secondary" onClick={() => nav({ session: id, mode: 'edit' })}>Review / Edit</button>
         <button className="btn btn-secondary" onClick={() => nav({ session: id, mode: 'bulletin' })}>Bulletin</button>
         <button className="btn btn-secondary" data-testid="dl-pptx" onClick={() => downloadPptx(pres, published ? bulletinUrl : null)}>Download PPTX</button>
         <button className="btn btn-secondary" data-testid="dl-pdf" onClick={() => window.open(`${base()}?session=${id}&mode=print&what=slides`, '_blank')}>Download PDF</button>
         <button className="btn" data-testid="remote-btn" onClick={startRemoteHost}>📱 Remote</button>
+        <button className="btn fullscreen-launch" data-testid="fullscreen" onClick={enterFull}>Fullscreen</button>
       </Header>
       <main className="main">
         <h2 style={{ marginBottom: '1rem' }}>{pres.title} {!published && <span className="badge draft">Draft - publish to enable QR</span>}</h2>
@@ -429,7 +453,7 @@ function Presenter({ id, nav }) {
             <button className="btn btn-secondary btn-sm" onClick={stopRemote}>Turn off remote</button>
           </div>
         )}
-        {remoteOpen && remote && !paired && (
+        {remoteOpen && remote && !paired && !full && (
           <div className="remote-panel" data-testid="remote-panel">
             <div><QRCodeSVG value={remoteUrl} size={132} bgColor="#ffffff" fgColor="#0f0c29" includeMargin /></div>
             <div>
@@ -448,7 +472,7 @@ function Presenter({ id, nav }) {
           <span style={{ alignSelf: 'center' }} data-testid="slide-counter">Slide {idx + 1} / {total}</span>
           <button className="btn btn-secondary" data-testid="next" onClick={() => go(1)} disabled={idx === total - 1}>Next →</button>
           <button className="btn btn-secondary" onClick={() => setBlack(v => !v)}>{black ? 'Unblack' : 'Black screen (B)'}</button>
-          <button className="btn" data-testid="fullscreen" onClick={enterFull}>Present Fullscreen</button>
+          <button className="btn fullscreen-launch" data-testid="fullscreen-controls" onClick={enterFull}>Fullscreen</button>
         </div>
         {pres.slides[idx]?.notes && <div className="notes"><b>Notes:</b> {pres.slides[idx].notes}</div>}
         {published ? (
@@ -461,7 +485,7 @@ function Presenter({ id, nav }) {
       </main>
       {black && !full && <div className="black-veil" onClick={() => setBlack(false)} />}
       {full && (
-        <div className="fullscreen-overlay" data-testid="fs-overlay" onClick={onStageClick} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        <div className="fullscreen-overlay" data-testid="fs-overlay" data-fs-mode={fsMode.current} onClick={onStageClick} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
           <SlideStage slide={pres.slides[idx]} qr={qr} sermonTitle={idx === 0 ? sermonTitleOf(pres) : null} className="fs-stage" fill />
           {black && <div className="black-veil" />}
           <div className="fs-controls" onClick={e => e.stopPropagation()}>
@@ -469,7 +493,9 @@ function Presenter({ id, nav }) {
             <span>{idx + 1} / {total}</span>
             <button aria-label="Next slide" data-testid="fs-next" onClick={() => go(1)}>›</button>
             {remote && <span className={`dot ${phoneConnected ? 'ok' : ''}`} title={statusLine} />}
-            <button aria-label="Exit fullscreen" onClick={exitFull}>✕</button>
+            {remote && <span className="fs-text" data-testid="fs-paired">{phoneConnected ? 'Paired' : 'Remote on'}</span>}
+            {remote && <button className="fs-text" data-testid="fs-end-remote" onClick={stopRemote}>End remote</button>}
+            <button aria-label="Exit fullscreen" data-testid="fs-exit" onClick={exitFull}>✕</button>
           </div>
         </div>
       )}
@@ -483,7 +509,27 @@ function RemoteControl({ code: initial }) {
   const [entered, setEntered] = useState(initial || '')
   const [state, setState] = useState(null)
   const [status, setStatus] = useState({ state: 'deriving' })
+  const [fsKind, setFsKind] = useState('off') // 'off' | 'api' | 'fallback' (iOS full-viewport)
   const ref = useRef(null)
+  const shellRef = useRef(null)
+  const origin = useRef(null)
+  const lastNav = useRef(0)
+  const handledPointer = useRef(false)
+  const remoteLeave = useRef(false)
+  useEffect(() => bindFullscreenChange(() => {
+    if (fullscreenElement()) { remoteLeave.current = false; setFsKind('api') }
+    else if (!remoteLeave.current) setFsKind(k => (k === 'api' ? 'fallback' : k))
+  }), [])
+  useEffect(() => {
+    const onKey = e => {
+      if (e.key !== 'Escape') return
+      remoteLeave.current = true
+      setFsKind('off')
+      exitFullscreen().catch(() => {})
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   useEffect(() => {
     if (!code) return
     setState(null)
@@ -491,6 +537,36 @@ function RemoteControl({ code: initial }) {
     return () => ref.current?.stop()
   }, [code])
   const send = c => ref.current?.send(c)
+  // Same next/prev commands the on-screen buttons already send. One tap, one command.
+  const navigateHalf = (e, fromPointer) => {
+    const now = performance.now()
+    if (now - lastNav.current < 450) return
+    if (fromPointer && origin.current) {
+      const dx = e.clientX - origin.current.x
+      const dy = e.clientY - origin.current.y
+      if (dx * dx + dy * dy > 24 * 24) return
+    }
+    if (!state || status.state !== 'connected') return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const cmd = e.clientX - rect.left < rect.width / 2 ? 'prev' : 'next'
+    if (cmd === 'prev' && state.idx <= 0) return
+    if (cmd === 'next' && state.idx >= state.total - 1) return
+    lastNav.current = now
+    send({ c: cmd })
+  }
+  const enterRemoteFs = () => {
+    const el = shellRef.current
+    setFsKind('fallback')
+    if (!el) return
+    requestFullscreen(el).then(() => {
+      if (fullscreenElement()) setFsKind('api')
+    }).catch(() => setFsKind('fallback'))
+  }
+  const exitRemoteFs = () => {
+    remoteLeave.current = true
+    setFsKind('off')
+    exitFullscreen().catch(() => {})
+  }
   if (!code) {
     const ok = validCode(entered)
     return (
@@ -506,8 +582,40 @@ function RemoteControl({ code: initial }) {
   const LABEL = { deriving: 'Securing connection…', connecting: 'Connecting…', waiting: 'Pairing with the laptop…', connected: 'Connected', notfound: 'Presenter not found', busy: 'Another phone is in control', ended: 'Remote session ended', lost: 'Connection lost, re-pair' }
   const ok = status.state === 'connected'
   const bad = ['notfound', 'busy', 'ended', 'lost'].includes(status.state)
+  const inFs = fsKind !== 'off'
   return (
-    <div className="app remote-app">
+    <div className={`app remote-app ${inFs ? 'remote-fs' : ''}`} ref={shellRef} data-fs-kind={fsKind}>
+      {inFs && state ? (
+        <div className="remote-fs-view" data-testid="remote-fs">
+          <SlideStage slide={state.cur} sermonTitle={state.idx === 0 ? state.sermonTitle : null} className="remote-fs-stage" fill testid="remote-fs-slide" />
+          <div
+            className="remote-fs-hit"
+            data-testid="remote-fs-hit"
+            onPointerDown={e => {
+              if (e.isPrimary === false) return
+              handledPointer.current = false
+              origin.current = { x: e.clientX, y: e.clientY, id: e.pointerId }
+            }}
+            onPointerUp={e => {
+              if (!origin.current || origin.current.id !== e.pointerId) return
+              handledPointer.current = true
+              navigateHalf(e, true)
+              origin.current = null
+            }}
+            onClick={e => {
+              if (handledPointer.current) { handledPointer.current = false; e.preventDefault(); return }
+              navigateHalf(e, false)
+            }}
+          >
+            <div className="remote-fs-half left" data-testid="remote-fs-prev"><span>Previous</span></div>
+            <div className="remote-fs-half right" data-testid="remote-fs-next"><span>Next</span></div>
+          </div>
+          <div className="remote-fs-chrome" data-fs-chrome>
+            <span data-testid="remote-fs-counter">{state.idx + 1} / {state.total}{state.black ? ' · BLACK' : ''}</span>
+            <button type="button" data-testid="remote-fs-exit" onClick={exitRemoteFs}>Exit</button>
+          </div>
+        </div>
+      ) : <>
       <div className={`remote-bar ${ok ? 'ok' : bad ? 'bad' : ''}`} data-testid="remote-status" data-state={status.state}>{ok ? '● ' : '○ '}{LABEL[status.state] || status.state}{ok && status.via ? ` • ${status.via}` : ''}</div>
       <main className="main">
         {status.detail && <p className={bad ? 'error-text' : 'muted'} data-testid="remote-detail">{status.detail}</p>}
@@ -523,6 +631,7 @@ function RemoteControl({ code: initial }) {
             <button className="btn btn-secondary big" data-testid="r-prev" onClick={() => send({ c: 'prev' })} disabled={!ok || state.idx === 0}>‹ Prev</button>
             <button className="btn big" data-testid="r-next" onClick={() => send({ c: 'next' })} disabled={!ok || state.idx >= state.total - 1}>Next ›</button>
           </div>
+          <button className="btn fullscreen-launch" data-testid="remote-fullscreen" disabled={!ok} onClick={enterRemoteFs}>Fullscreen</button>
           <div className="remote-row">
             <button className="btn btn-secondary btn-sm" data-testid="r-black" disabled={!ok} onClick={() => send({ c: 'black' })}>{state.black ? 'Show slides' : 'Black screen'}</button>
             <select data-testid="r-goto" value={state.idx} disabled={!ok} onChange={e => send({ c: 'goto', slide: Number(e.target.value) })}>
@@ -535,7 +644,18 @@ function RemoteControl({ code: initial }) {
         </> : !bad && <p className="muted">Waiting for the presenter laptop… Make sure the presenter page is open with its Remote panel showing this code.</p>}
         <p className="small muted" style={{ marginTop: '1.5rem' }}>Code {formatCode(code)}</p>
       </main>
+      </>}
     </div>
+  )
+}
+
+function ScriptureBlock({ d, i }) {
+  if (!d.ref?.book) return <p className="warn-text" data-testid={i !== undefined ? `scripture-flag-${i}` : 'scripture-flag'}>{scriptureLabel(d)}</p>
+  return (
+    <>
+      <div className="scripture"><a href={passageUrl(d.ref)} target="_blank" rel="noreferrer">{formatRef(d.ref)}</a></div>
+      {d.also?.length > 0 && <p className="small muted" data-testid={i !== undefined ? `also-${i}` : undefined}>Also named on the slide: {d.also.join('; ')}</p>}
+    </>
   )
 }
 
@@ -622,10 +742,11 @@ function Bulletin({ id, who, nav }) {
   if (loading) return <div className="app"><main className="main"><p className="muted" data-testid="bulletin-loading">{progress ? `Looking for this week's bulletin on the free relays… (try ${progress.attempt} of ${progress.of})` : 'Loading bulletin…'}</p></main></div>
   if (!pres) return <BulletinFailure failure={failure || { reason: 'none' }} retry={retry} />
   if (!hash && pres.status !== 'published') return <ViewerMessage msg="This bulletin hasn't been published yet." />
-  // Highlight today only when today falls inside this bulletin's week (Mon-Sun after the sermon Sunday).
+  // Highlight today only when today falls in this bulletin's week (Sunday the sermon was preached through Saturday).
   const todayIdx = (() => {
-    if (!pres.weekOf) return (new Date().getDay() + 6) % 7
-    const start = new Date(`${pres.weekOf}T00:00:00`); const diff = Math.floor((Date.now() - start) / 86400000) - 1
+    if (!pres.weekOf) return new Date().getDay()
+    const start = new Date(`${pres.weekOf}T00:00:00`)
+    const diff = Math.floor((Date.now() - start.getTime()) / 86400000)
     return diff >= 0 && diff < 7 ? diff : -1
   })()
   const today = DAYS[todayIdx]
@@ -655,7 +776,7 @@ function Bulletin({ id, who, nav }) {
           <div key={d.day} className={`devotional-card ${d.day === today ? 'today' : ''}`} data-testid={`day-${i}`}>
             <h2>{d.day} <span className="muted small">{dayDate(pres.weekOf, i)}</span> {d.day === today && <span className="badge published">Today</span>}</h2>
             <h3 style={{ color: 'var(--accent-green)' }}>{d.title}</h3>
-            <div className="scripture"><a href={passageUrl(d.ref)} target="_blank" rel="noreferrer">{formatRef(d.ref)}</a></div>
+            <ScriptureBlock d={d} i={i} />
             <p>{d.reflection}</p>
             <p style={{ marginTop: '0.5rem' }}><b>Prayer:</b> {d.prayer}</p>
             <p style={{ marginTop: '0.5rem' }}><b>Today:</b> {d.action}</p>
@@ -694,7 +815,7 @@ function PrintView({ route }) {
     <div className="print-root print-devos">
       <h1>{sermonTitleOf(pres)}</h1><p>{pres.title} • <i>{pres.theme}</i></p>
       {idxs.map(i => { const d = pres.devotionals[i]; return (
-        <section key={d.day}><h2>{d.day}{pres.weekOf ? ` (${dayDate(pres.weekOf, i)})` : ''}: {d.title}</h2><p className="ref">{formatRef(d.ref)}</p><p>{d.reflection}</p><p><b>Prayer:</b> {d.prayer}</p><p><b>Today:</b> {d.action}</p></section>
+        <section key={d.day} data-testid={`print-day-${i}`}><h2>{d.day}{pres.weekOf ? ` (${dayDate(pres.weekOf, i)})` : ''}: {d.title}</h2><p className="ref">{scriptureLabel(d)}</p>{d.also?.length ? <p>Also named on the slide: {d.also.join('; ')}</p> : null}<p>{d.reflection}</p><p><b>Prayer:</b> {d.prayer}</p><p><b>Today:</b> {d.action}</p></section>
       ) })}
     </div>
   )
