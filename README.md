@@ -15,7 +15,7 @@ Deploy: `npm run build`, then publish `dist/` to the `gh-pages` branch (Pages so
 - Fullscreen presentation mode
 - Mobile-friendly controls
 - QR code on title/presenter view for public realtime follow-along
-- Separate Devotionals page ("Sunday Stroll Through The Week") that extracts Bible references from slides and generates daily reflections
+- Separate Devotionals page ("Sunday Stroll Through The Week") that extracts Bible references from slides and generates daily reflections. The week runs Sunday (sermon day) through Saturday. A day whose slides name no scripture is flagged instead of filled with a made-up passage.
 - Dark theme with purple gradients and green/cyan accents inspired by Faithlife Proclaim
 
 ## Setup
@@ -32,7 +32,7 @@ Upload a .pptx file. A QR code will appear for audience follow-along (open the l
 ## Flow
 
 1. Host archive at `/` - upload a PPTX, see every previous presentation (draft/published) with Review/Edit, Present, Bulletin, Delete.
-2. Review/Edit (`?session=ID&mode=edit`) - edit title, week theme, sermon Sunday, slides (reorder/add/delete), and 7 daily devotionals. Scripture uses structured fields: book, chapter, verse start/end, Bible version.
+2. Review/Edit (`?session=ID&mode=edit`) - edit title, week theme, sermon Sunday, slides (reorder/add/delete), and 7 daily devotionals (Sunday through Saturday). Scripture uses structured fields: book, chapter, verse start/end, end chapter when a passage crosses chapters, Bible version.
 3. Publish - locks edits, shows a QR code that opens the bulletin; the same QR appears on the title slide in the presenter and fullscreen views.
 4. Bulletin (`?session=ID&mode=bulletin`) - all-week devotionals with Print day / Download day, Print week / Download week (.html, .txt). "Copy share link" makes a portable link that works on any device without a backend.
 5. Presenter downloads: PPTX (pptxgenjs) and PDF (browser print-to-PDF).
@@ -45,7 +45,7 @@ This MVP uses client-side parsing with `pptxtojson`. For true multi-device realt
 
 ## Sample Context
 
-Built with the Ephesians 5 outline in mind (Camp Carroll / USAG Daegu style). Devotionals pull from verses like Ephesians 5:1-2, 5:3-4, etc.
+Built with the Ephesians 5 outline in mind (Camp Carroll / USAG Daegu style). The published Sermon_Dev week starts Sunday with the sermon theme, Ephesians 5:22-6:4, then one slide point each weekday. Only references that appear on the slides are used.
 
 ## Deploy
 
@@ -59,7 +59,7 @@ Styled after Proclaim: dark UI, vibrant accents, church-focused presentation exp
 1. On the laptop open the presentation, click **📱 Remote**. A pairing code (18 random characters, about 89 bits, shown as XXXXXX-XXXXXX-XXXXXX) and a small QR appear.
 2. On the phone scan that QR (or open `https://clashclan-xrp.github.io/sunday-stroll-presenter/?remote` and type the code).
 3. The code panel hides itself as soon as the phone pairs, and it is never part of the fullscreen output, so it doesn't show on a mirrored projector.
-4. Click **Present Fullscreen**. The phone shows the current and next slide, notes, Prev / Next, a jump list and Black screen. The laptop keyboard and clicker keep working.
+4. Click **Fullscreen** (header or under the slide). Pairing, unpairing, and End remote do not leave fullscreen, and the pairing code is hidden the whole time you are in it. The phone shows the current and next slide, notes, Prev / Next, its own **Fullscreen** button (right-half tap = next, left-half tap = previous; iOS uses a full-viewport fallback), a jump list and Black screen. The laptop keyboard and clicker keep working.
 5. **Disconnect / New code** ends the session for the phone and makes a fresh code. Only one phone can control at a time; a second phone is told someone else is in control.
 
 How it connects: the laptop listens on three free public relays at once and the phone uses whichever works first:
@@ -89,8 +89,12 @@ else can change it. If a hosted copy exists in `public/sessions/`, the QR uses `
 
 ## Fullscreen controls
 
+**Fullscreen** in the header (and again under the slide) enters the Fullscreen API on that tap, including the webkit-prefixed path. If the browser refuses element fullscreen, the presenter keeps a full-viewport overlay. `fullscreenchange` and `webkitfullscreenchange` keep the overlay in step with the browser. The pairing code is not rendered in that view.
+
 Next: → ↓ PageDown Space Enter N, click/tap the right half, swipe left. Back: ← ↑ PageUp Backspace P, click/tap the left half, swipe right.
 Home/End jump to the first/last slide, B or . toggles a black screen, Esc exits. Most presentation clickers send PageUp/PageDown and work as-is.
+
+On the phone remote, **Fullscreen** shows the current slide. A tap on the right half sends the same `next` command as the Next button; the left half sends `prev`. A second tap inside 450ms is ignored so one press cannot advance two slides. iOS Safari, which has no element fullscreen, uses the same full-viewport layout.
 
 ## PPTX import fidelity
 
